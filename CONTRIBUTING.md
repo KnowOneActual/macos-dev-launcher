@@ -1,83 +1,56 @@
-# Contributing to Project Starter Script
+# Contributing to Dev Environment Launcher
 
-First off, thanks for taking the time to contribute! 🚀
+Thanks for checking out this project! 🚀
 
-We want to make this tool the best way to kickstart new projects, and your help is welcome—whether it's fixing a bug in the Bash logic or improving the boilerplate templates.
+This tool is designed to be a simple, hackable way to manage dev environments on macOS. Whether you want to add support for more terminals or improve the Python logic, your help is welcome.
 
 ## How to Contribute
 
-### Reporting Bugs
-If the script crashes, misbehaves, or creates a weird directory structure, please [open an issue](https://github.com/KnowOneActual/Project_Starter_Script/issues/new?template=bug_report.md).
-* Check if the issue already exists.
-* Use the **Bug Report** template to provide details (OS, Bash version, etc.).
+### 1. Reporting Bugs
+If the script fails to open your terminal or crashes:
+* **Check your config:** Ensure the app names in `TERMINAL_APPS` match exactly what is in your `/Applications` folder.
+* **Open an Issue:** Tell us which OS version you are on and which terminal you were trying to launch.
 
-### Requesting Features
-Have an idea for a new language template or a workflow improvement?
-* Open a **Feature Request** ticket.
-* Describe *why* this feature would be useful to the broader community.
+### 2. Suggesting Features
+Want to add a "Open in Browser" option? Or maybe support for iTerm profiles?
+* Open a **Feature Request** issue.
+* Explain how you would use it in your daily workflow.
 
-### Submitting Changes (Pull Requests)
-
-1.  **Fork the Repo**: Click the "Fork" button in the top right corner of this page.
-2.  **Clone your Fork**:
-    ```bash
-    git clone [https://github.com/YOUR-USERNAME/Project_Starter_Script.git](https://github.com/YOUR-USERNAME/Project_Starter_Script.git)
-    cd Project_Starter_Script
-    ```
-3.  **Create a Branch**:
-    ```bash
-    # Use a descriptive name
-    git checkout -b fix-git-init-logic
-    ```
-4.  **Make your Changes**: Edit the script or the boilerplate files.
-5.  **Test Your Changes**: (See the "Testing" section below).
-6.  **Push and PR**: Push your branch to your fork and open a Pull Request against our `main` branch. Please fill out the [PR Template](.github/PULL_REQUEST_TEMPLATE.md) completely.
+### 3. Submitting Pull Requests
+1.  **Fork** the repository.
+2.  **Clone** your fork locally.
+3.  **Create a branch** (e.g., `feat-add-alacritty` or `fix-path-spaces`).
+4.  **Test your changes** (see below).
+5.  **Push** to your fork and open a **Pull Request**.
 
 ---
 
 ## Development & Testing
 
-### Testing the Script Logic
-If you are modifying `start-project.sh`, you should test it by running it against a dummy folder.
+### macOS Requirement
+This script relies heavily on `osascript` to display native dialogs. **It will only run on macOS.**
 
-```bash
-# Make sure it's executable
-chmod +x start-project.sh
+### Testing the Script
+You don't need to create a Quick Action every time you change code. You can run it directly from your terminal:
 
-# Run it with a test name
-./start-project.sh test-project-01
-````
+1.  Open your current terminal.
+2.  Run the script against a dummy folder:
+    ```bash
+    # Replace with your actual path
+    python3 open_dev_env.py "/Users/you/code/my-test-project"
+    ```
+3.  **Verify:**
+    * Did the popup appear?
+    * Did the selected terminal open?
+    * Did it `cd` into the correct folder?
 
-### Testing Boilerplate Downloads (Important\!)
-
-The script uses `curl` to fetch boilerplate files (like `.editorconfig` or `LICENSE`) directly from the **main** branch of this repository.
-
-**If you modify a boilerplate file**, the script *will not* see your changes locally because it is still fetching the old version from the live URL.
-
-To test changes to downloaded files:
-
-1.  Edit `start-project.sh`.
-2.  Temporarily change the `BASE_URL` variable or the specific `download_file` line to point to your local file path or your fork's raw URL.
-3.  **Do not commit this change.** Please revert the URL change before submitting your PR.
+---
 
 ## Style Guidelines
 
-### Bash Scripting
-
-We aim for clean, safe, and portable Bash code.
-
-  * **ShellCheck**: We recommend running your code through [ShellCheck](https://www.shellcheck.net/) to catch common errors.
-  * **Indentation**: Use 4 spaces for indentation.
-  * **Comments**: Comment complex logic, especially regex or API calls.
-
-### Markdown & Text
-
-  * This project uses **Prettier** for formatting.
-  * Refer to `.prettierrc` for the specific configuration (Space indentation, `lf` line endings).
+* **Python:** We follow standard PEP 8 style.
+* **Config:** If you add new default apps, please keep them sorted alphabetically in the `TERMINAL_APPS` list.
 
 ## License
 
-By contributing to Project Starter Script, you agree that your contributions will be licensed under its MIT License.
-
-```
-```
+By contributing, you agree that your contributions will be licensed under the project's MIT License.
