@@ -1,8 +1,10 @@
-A macOS Quick Action that streamlines your workflow startup. 
 ![Language](https://img.shields.io/badge/Language-Python_3-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-macOS-000000?logo=apple&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)# macOS Dev Environment Launcher
+![License](https://img.shields.io/badge/License-MIT-green)
 
+# macOS Dev Environment Launcher
+
+A macOS Quick Action that streamlines your workflow startup. 
 Instead of manually opening a terminal, navigating to a project, and then launching your editor, this script lets you right-click any project folder and ask: **"Which terminal should we use today?"**
 
 ## Features
