@@ -2,7 +2,8 @@
 
 **Project:** [macos-dev-launcher](https://github.com/KnowOneActual/macos-dev-launcher)  
 **Purpose:** Systematic enhancement plan for improved reliability, UX, and extensibility  
-**Last Updated:** November 30, 2025
+**Last Updated:** November 30, 2025  
+**Current Version:** v1.1.0
 
 ---
 
@@ -16,14 +17,21 @@ This roadmap outlines a phased approach to enhancing the macOS Dev Launcher whil
 
 **Goal:** Ensure reliability and graceful failure handling before adding new features.
 
-### 1.1 Application Validation
+### 1.1 Application Validation ✅
+- **Status:** COMPLETED (v1.1.0)
 - **Task:** Verify terminal and editor apps exist before presenting options
 - **Implementation:**
   - Create `app_exists()` function to check `/Applications/{app}.app`
   - Filter `TERMINAL_APPS` list to show only installed apps
   - Handle case where no valid terminals are found
-- **Estimated Effort:** 2-3 hours
+- **Completed:** November 30, 2025
+- **Actual Effort:** 2 hours
 - **Dependencies:** None
+- **Bonus Features Added:**
+  - CLI argument parsing with `argparse`
+  - `--test` mode for configuration validation
+  - `--verbose` mode for debugging
+  - Path validation (exists and is directory)
 
 ### 1.2 Error Messaging & User Feedback
 - **Task:** Implement informative dialogs for errors and success states
