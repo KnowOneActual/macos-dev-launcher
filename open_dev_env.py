@@ -14,7 +14,7 @@ from logging.handlers import RotatingFileHandler
 # These are used if no config file exists or values are missing
 DEFAULT_CONFIG = {
     "terminals": ["Ghostty", "Kitty", "Warp", "Wave"],
-    "editor": "VSCodium",
+    "editors": ["VSCodium"],  # Changed from single "editor" to list "editors"
     "logging": {
         "enabled": True,
         "level": "INFO",
@@ -68,6 +68,15 @@ def load_config(config_path=None, verbose=False):
                 else:
                     config[key] = value
             
+            # Backward compatibility: convert old "editor" to "editors" list
+            if "editor" in user_config and "editors" not in user_config:
+                if user_config["editor"]:
+                    config["editors"] = [user_config["editor"]]
+                else:
+                    config["editors"] = []
+                if verbose:
+                    print(f"  Converted legacy 'editor' config to 'editors' list")
+            
             if verbose:
                 print(f"✓ Loaded config from {config_path}")
             
@@ -109,7 +118,7 @@ config = load_config()
 
 # Extract configuration values
 TERMINAL_APPS = config["terminals"]
-EDITOR_APP = config["editor"]
+EDITOR_APPS = config["editors"]  # Now a list
 LOGGING_ENABLED = config["logging"]["enabled"]
 LOG_LEVEL = config["logging"]["level"]
 LOG_FILE = Path(config["logging"]["file"]).expanduser()
@@ -285,6 +294,17 @@ def get_available_terminals():
     logger.info(f"Available terminals: {available} (out of {TERMINAL_APPS})")
     return available
 
+def get_available_editors():
+    """
+    Filter the configured editor list to only include installed apps.
+    
+    Returns:
+        list: List of installed editor app names
+    """
+    available = [app for app in EDITOR_APPS if app_exists(app)]
+    logger.info(f"Available editors: {available} (out of {EDITOR_APPS})")
+    return available
+
 def show_error_dialog(title, message):
     """
     Display an error dialog to the user.
@@ -369,54 +389,93 @@ def ask_terminal_choice(verbose=False):
         show_error_dialog("Terminal Selection Failed", f"Could not display terminal picker: {e}")
         return None
 
-def ask_open_editor(project_name, verbose=False):
+def ask_editor_choice(project_name, verbose=False):
     """
-    Asks if the user wants to open the configured editor.
-    Only asks if the editor is actually installed and auto_open_editor is enabled.
+    Ask user which editor to open, or if they want to open an editor at all.
     
     Args:
         project_name (str): Name of the project folder
         verbose (bool): If True, print debug information
     
     Returns:
-        bool: True if user wants to open editor and it exists, False otherwise
+        str: Selected editor name, or None if user chose not to open editor
     """
-    logger.debug(f"Asking if user wants to open editor for project: {project_name}")
+    logger.debug(f"Asking user to choose editor for project: {project_name}")
     
     # Skip if auto_open_editor is disabled
     if not AUTO_OPEN_EDITOR:
         logger.info("auto_open_editor is disabled, skipping editor prompt")
-        return False
+        return None
     
-    # Check if editor exists before asking
-    if not app_exists(EDITOR_APP):
-        logger.info(f"Editor {EDITOR_APP} not installed, skipping editor prompt")
-        if verbose:
-            print(f"Editor {EDITOR_APP} not installed, skipping...")
-        # Silently skip if editor not installed (don't interrupt workflow)
-        return False
+    # Get available editors
+    available_editors = get_available_editors()
     
     if verbose:
-        print(f"Editor {EDITOR_APP} is available")
+        print(f"Configured editors: {EDITOR_APPS}")
+        print(f"Available editors: {available_editors}")
     
-    # Escape project name for AppleScript
+    # If no editors available, skip silently
+    if not available_editors:
+        logger.info("No configured editors are installed, skipping editor prompt")
+        if verbose:
+            print(f"No editors installed, skipping...")
+        return None
+    
+    # If only one editor, ask yes/no instead of showing picker
+    if len(available_editors) == 1:
+        editor = available_editors[0]
+        safe_project_name = project_name.replace("'", "\\'").replace('"', '\\"')
+        
+        script = f"""
+        display dialog "Open '{safe_project_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
+        return button returned of result
+        """
+        try:
+            result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
+            if result == "Yes":
+                logger.info(f"User chose to open {editor}")
+                if verbose:
+                    print(f"User chose to open {editor}")
+                return editor
+            else:
+                logger.info("User chose not to open editor")
+                if verbose:
+                    print("User chose not to open editor")
+                return None
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to display editor prompt: {e}")
+            return None
+    
+    # Multiple editors: show picker with "None" option
     safe_project_name = project_name.replace("'", "\\'").replace('"', '\\"')
+    editor_list_with_none = ["None (Terminal Only)"] + available_editors
+    options_str = "{" + ", ".join([f'"{app}"' for app in editor_list_with_none]) + "}"
     
     script = f"""
-    display dialog "Open '{safe_project_name}' in {EDITOR_APP} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
-    return button returned of result
+    set appList to {options_str}
+    set choice to choose from list appList with prompt "📝 Open '{safe_project_name}' in which editor?" default items {{"{available_editors[0]}"}}
+    if choice is false then
+        return "CANCEL"
+    else
+        return item 1 of choice
+    end if
     """
     try:
         result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
-        open_editor = result == "Yes"
-        logger.info(f"User chose to open editor: {open_editor}")
-        if verbose:
-            print(f"User chose to open editor: {open_editor}")
-        return open_editor
+        if result == "CANCEL" or result.startswith("None"):
+            logger.info("User chose not to open editor")
+            if verbose:
+                print("User chose not to open editor")
+            return None
+        else:
+            logger.info(f"User selected editor: {result}")
+            if verbose:
+                print(f"User selected editor: {result}")
+            return result
     except subprocess.CalledProcessError as e:
-        logger.warning(f"Failed to display editor prompt: {e}")
-        # If dialog fails, default to not opening editor
-        return False
+        logger.error(f"Failed to display editor picker: {e}")
+        # Don't show error dialog - just skip editor
+        return None
 
 def open_project(path, verbose=False):
     """
@@ -462,8 +521,6 @@ def open_project(path, verbose=False):
         logger.info(f"Launching {terminal_app} for {project_name}")
         if verbose:
             print(f"Launching {terminal_app}...")
-        # Use subprocess with list arguments (safer than shell=True)
-        # Path is already sanitized, but subprocess handles it safely
         subprocess.run(["open", "-a", terminal_app, path_str], check=True)
         logger.info(f"Successfully launched {terminal_app}")
         if verbose:
@@ -476,21 +533,22 @@ def open_project(path, verbose=False):
         )
         return
     
-    # 3. Ask for Editor (with validation)
-    if ask_open_editor(project_name, verbose):
+    # 3. Ask for Editor (with multi-editor support)
+    editor_app = ask_editor_choice(project_name, verbose)
+    if editor_app:
         try:
-            logger.info(f"Launching {EDITOR_APP} for {project_name}")
+            logger.info(f"Launching {editor_app} for {project_name}")
             if verbose:
-                print(f"Launching {EDITOR_APP}...")
-            subprocess.run(["open", "-a", EDITOR_APP, path_str], check=True)
-            logger.info(f"Successfully launched {EDITOR_APP}")
+                print(f"Launching {editor_app}...")
+            subprocess.run(["open", "-a", editor_app, path_str], check=True)
+            logger.info(f"Successfully launched {editor_app}")
             if verbose:
-                print(f"✓ {EDITOR_APP} launched successfully")
+                print(f"✓ {editor_app} launched successfully")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to launch {EDITOR_APP}: {e}")
+            logger.error(f"Failed to launch {editor_app}: {e}")
             show_error_dialog(
                 "Failed to Open Editor",
-                f"Could not launch {EDITOR_APP}. Error: {e}"
+                f"Could not launch {editor_app}. Error: {e}"
             )
             # Continue anyway - terminal already opened successfully
     else:
@@ -526,12 +584,16 @@ def test_mode(verbose=False):
         print("✗ No configured terminals found!")
         print(f"  Please install one of: {', '.join(TERMINAL_APPS)}")
     
-    print(f"\nConfigured Editor: {EDITOR_APP if EDITOR_APP else '(none)'}")
-    if EDITOR_APP:
-        if app_exists(EDITOR_APP):
-            print(f"✓ Editor {EDITOR_APP} is installed")
+    print(f"\nConfigured Editors: {', '.join(EDITOR_APPS) if EDITOR_APPS else '(none)'}")
+    if EDITOR_APPS:
+        available_editors = get_available_editors()
+        if available_editors:
+            print(f"✓ Available Editors: {', '.join(available_editors)}")
+            if len(available_editors) > 1:
+                print(f"  (Multiple editors: picker dialog will be shown)")
         else:
-            print(f"✗ Editor {EDITOR_APP} not found")
+            print(f"✗ No configured editors found")
+            print(f"  Please install one of: {', '.join(EDITOR_APPS)}")
             print(f"  (Editor is optional - will be skipped)")
     else:
         print(f"  Editor disabled (auto_open_editor: {AUTO_OPEN_EDITOR})")
@@ -631,7 +693,7 @@ if __name__ == "__main__":
         config = load_config(args.config, args.verbose)
         # Re-extract configuration values
         TERMINAL_APPS = config["terminals"]
-        EDITOR_APP = config["editor"]
+        EDITOR_APPS = config["editors"]
         LOGGING_ENABLED = config["logging"]["enabled"]
         LOG_LEVEL = config["logging"]["level"]
     

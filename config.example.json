@@ -12,7 +12,12 @@
     "Terminal"
   ],
   
-  "editor": "VSCodium",
+  "editors": [
+    "VSCodium",
+    "Visual Studio Code",
+    "Cursor",
+    "Zed"
+  ],
   
   "logging": {
     "enabled": true,
@@ -29,13 +34,13 @@
   
   "_comments": {
     "terminals": "List of terminal applications to show in picker (in order). Only installed apps will be shown.",
-    "editor": "Default editor application. Set to empty string to disable editor prompts.",
+    "editors": "List of editor applications. If multiple editors are configured, you'll be asked to choose. Set to empty list [] to disable editor prompts. Set to single-item list to skip picker dialog.",
     "logging.enabled": "Enable or disable file logging.",
     "logging.level": "Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
     "logging.file": "Path to log file. Tilde (~) expands to user home directory.",
     "logging.max_bytes": "Maximum size of log file before rotation (in bytes). Default: 1MB",
     "logging.backup_count": "Number of backup log files to keep. Default: 7",
-    "behavior.auto_open_editor": "If true, show editor prompt after terminal selection.",
+    "behavior.auto_open_editor": "If true, show editor prompt after terminal selection. If false, skip editor entirely.",
     "behavior.remember_choices": "If true, remember last terminal/editor choice per project (Phase 2.4 feature)."
   }
 }
