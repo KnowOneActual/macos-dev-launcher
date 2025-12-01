@@ -3,7 +3,7 @@
 **Project:** [macos-dev-launcher](https://github.com/KnowOneActual/macos-dev-launcher)  
 **Purpose:** Systematic enhancement plan for improved reliability, UX, and extensibility  
 **Last Updated:** November 30, 2025  
-**Current Version:** v1.1.0
+**Current Version:** v1.2.0
 
 ---
 
@@ -42,14 +42,22 @@ This roadmap outlines a phased approach to enhancing the macOS Dev Launcher whil
 - **Estimated Effort:** 2-3 hours
 - **Dependencies:** 1.1
 
-### 1.3 Path & Input Sanitization
+### 1.3 Path & Input Sanitization ✅
+- **Status:** COMPLETED (v1.2.0)
 - **Task:** Safely handle special characters, spaces, and potentially malicious paths
 - **Implementation:**
   - Use `shlex.quote()` for shell arguments
   - Validate input paths exist and are directories
   - Handle symlinks and aliases properly
-- **Estimated Effort:** 1-2 hours
+- **Completed:** November 30, 2025
+- **Actual Effort:** 1 hour
 - **Dependencies:** None
+- **Features Delivered:**
+  - `sanitize_path()` function with comprehensive validation
+  - Symlink resolution and detection
+  - Special character escaping in dialogs
+  - Security checks for suspicious paths
+  - Enhanced `--test --verbose` mode with path tests
 
 ### 1.4 Logging Infrastructure
 - **Task:** Add optional logging for troubleshooting
