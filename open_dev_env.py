@@ -5,38 +5,145 @@ import subprocess
 import argparse
 import shlex
 import logging
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 
-# --- CONFIGURATION ---
-TERMINAL_APPS = ["Ghostty", "Kitty", "Warp", "Wave"] 
-EDITOR_APP = "VSCodium"
+# --- DEFAULT CONFIGURATION ---
+# These are used if no config file exists or values are missing
+DEFAULT_CONFIG = {
+    "terminals": ["Ghostty", "Kitty", "Warp", "Wave"],
+    "editor": "VSCodium",
+    "logging": {
+        "enabled": True,
+        "level": "INFO",
+        "file": "~/Library/Logs/macos-dev-launcher.log",
+        "max_bytes": 1048576,  # 1 MB
+        "backup_count": 7
+    },
+    "behavior": {
+        "auto_open_editor": True,
+        "remember_choices": False
+    }
+}
 
-# Logging configuration
-LOG_DIR = Path.home() / "Library" / "Logs"
-LOG_FILE = LOG_DIR / "macos-dev-launcher.log"
-LOG_MAX_BYTES = 1024 * 1024  # 1 MB
-LOG_BACKUP_COUNT = 7  # Keep 7 backup files (approximately 7 days if one file per day)
-LOGGING_ENABLED = True  # Can be overridden by config in future
+# Config file location
+CONFIG_DIR = Path.home() / ".config" / "macos-dev-launcher"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+
+# --- CONFIGURATION LOADING ---
+
+def load_config(config_path=None, verbose=False):
+    """
+    Load configuration from JSON file with fallback to defaults.
+    
+    Args:
+        config_path (Path): Optional path to config file. If None, uses default location.
+        verbose (bool): If True, print debug information
+    
+    Returns:
+        dict: Configuration dictionary with all values
+    """
+    config = DEFAULT_CONFIG.copy()
+    
+    if config_path is None:
+        config_path = CONFIG_FILE
+    else:
+        config_path = Path(config_path).expanduser()
+    
+    if verbose:
+        print(f"Looking for config at: {config_path}")
+    
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                user_config = json.load(f)
+            
+            # Merge user config with defaults (user config takes precedence)
+            # Deep merge for nested dicts
+            for key, value in user_config.items():
+                if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+                    config[key].update(value)
+                else:
+                    config[key] = value
+            
+            if verbose:
+                print(f"✓ Loaded config from {config_path}")
+            
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Warning: Could not load config from {config_path}: {e}", file=sys.stderr)
+            print(f"Using default configuration", file=sys.stderr)
+    else:
+        if verbose:
+            print(f"Config file not found, using defaults")
+            print(f"You can create a config file at: {config_path}")
+            print(f"See config.example.json for reference")
+    
+    return config
+
+def create_example_config(verbose=False):
+    """
+    Create example configuration file at default location.
+    
+    Args:
+        verbose (bool): If True, print status information
+    """
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(DEFAULT_CONFIG, f, indent=2)
+        
+        if verbose:
+            print(f"✓ Created config file at: {CONFIG_FILE}")
+            print(f"Edit this file to customize your settings")
+        
+        return True
+    except (OSError, PermissionError) as e:
+        print(f"Error: Could not create config file: {e}", file=sys.stderr)
+        return False
+
+# Load configuration at module level
+config = load_config()
+
+# Extract configuration values
+TERMINAL_APPS = config["terminals"]
+EDITOR_APP = config["editor"]
+LOGGING_ENABLED = config["logging"]["enabled"]
+LOG_LEVEL = config["logging"]["level"]
+LOG_FILE = Path(config["logging"]["file"]).expanduser()
+LOG_DIR = LOG_FILE.parent
+LOG_MAX_BYTES = config["logging"]["max_bytes"]
+LOG_BACKUP_COUNT = config["logging"]["backup_count"]
+AUTO_OPEN_EDITOR = config["behavior"]["auto_open_editor"]
+REMEMBER_CHOICES = config["behavior"]["remember_choices"]
 
 # --- LOGGING SETUP ---
 
-def setup_logging(enabled=True, verbose=False):
+def setup_logging(enabled=True, verbose=False, level=None):
     """
     Configure logging with rotation and appropriate level.
     
     Args:
         enabled (bool): Whether to enable file logging
         verbose (bool): If True, set to DEBUG level and also log to console
+        level (str): Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     
     Returns:
         logging.Logger: Configured logger instance
     """
     logger = logging.getLogger('macos-dev-launcher')
     
-    # Set level based on verbose flag
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    # Determine log level
+    if verbose:
+        log_level = logging.DEBUG
+    elif level:
+        log_level = getattr(logging, level.upper(), logging.INFO)
+    else:
+        log_level = logging.INFO
+    
+    logger.setLevel(log_level)
     
     # Clear any existing handlers
     logger.handlers.clear()
@@ -92,6 +199,8 @@ def app_exists(app_name):
     Returns:
         bool: True if app exists, False otherwise
     """
+    if not app_name:  # Handle empty string (e.g., disabled editor)
+        return False
     app_path = Path(f"/Applications/{app_name}.app")
     exists = app_path.exists() and app_path.is_dir()
     logger.debug(f"Checking if {app_name} exists: {exists}")
@@ -263,7 +372,7 @@ def ask_terminal_choice(verbose=False):
 def ask_open_editor(project_name, verbose=False):
     """
     Asks if the user wants to open the configured editor.
-    Only asks if the editor is actually installed.
+    Only asks if the editor is actually installed and auto_open_editor is enabled.
     
     Args:
         project_name (str): Name of the project folder
@@ -273,6 +382,11 @@ def ask_open_editor(project_name, verbose=False):
         bool: True if user wants to open editor and it exists, False otherwise
     """
     logger.debug(f"Asking if user wants to open editor for project: {project_name}")
+    
+    # Skip if auto_open_editor is disabled
+    if not AUTO_OPEN_EDITOR:
+        logger.info("auto_open_editor is disabled, skipping editor prompt")
+        return False
     
     # Check if editor exists before asking
     if not app_exists(EDITOR_APP):
@@ -394,6 +508,15 @@ def test_mode(verbose=False):
     print("macOS Dev Launcher - Configuration Test")
     print("=" * 60)
     
+    # Configuration file info
+    print(f"\nConfiguration:")
+    print(f"  Config file: {CONFIG_FILE}")
+    if CONFIG_FILE.exists():
+        print(f"  ✓ Config file exists")
+    else:
+        print(f"  ✗ Config file not found (using defaults)")
+        print(f"  Run with --create-config to create one")
+    
     print(f"\nConfigured Terminals: {', '.join(TERMINAL_APPS)}")
     available = get_available_terminals()
     
@@ -403,17 +526,21 @@ def test_mode(verbose=False):
         print("✗ No configured terminals found!")
         print(f"  Please install one of: {', '.join(TERMINAL_APPS)}")
     
-    print(f"\nConfigured Editor: {EDITOR_APP}")
-    if app_exists(EDITOR_APP):
-        print(f"✓ Editor {EDITOR_APP} is installed")
+    print(f"\nConfigured Editor: {EDITOR_APP if EDITOR_APP else '(none)'}")
+    if EDITOR_APP:
+        if app_exists(EDITOR_APP):
+            print(f"✓ Editor {EDITOR_APP} is installed")
+        else:
+            print(f"✗ Editor {EDITOR_APP} not found")
+            print(f"  (Editor is optional - will be skipped)")
     else:
-        print(f"✗ Editor {EDITOR_APP} not found")
-        print(f"  (Editor is optional - will be skipped)")
+        print(f"  Editor disabled (auto_open_editor: {AUTO_OPEN_EDITOR})")
     
     # Logging info
     print(f"\nLogging Configuration:")
     print(f"  Log file: {LOG_FILE}")
     print(f"  Logging enabled: {LOGGING_ENABLED}")
+    print(f"  Log level: {LOG_LEVEL}")
     print(f"  Max log size: {LOG_MAX_BYTES / 1024:.0f} KB")
     print(f"  Backup count: {LOG_BACKUP_COUNT}")
     if LOG_FILE.exists():
@@ -421,6 +548,11 @@ def test_mode(verbose=False):
         print(f"  Current log size: {size / 1024:.2f} KB")
     else:
         print(f"  Log file does not exist yet")
+    
+    # Behavior settings
+    print(f"\nBehavior:")
+    print(f"  Auto-open editor: {AUTO_OPEN_EDITOR}")
+    print(f"  Remember choices: {REMEMBER_CHOICES} (Phase 2.4 feature)")
     
     # Test path sanitization
     if verbose:
@@ -474,19 +606,47 @@ if __name__ == "__main__":
         action='store_true',
         help='Disable file logging'
     )
+    parser.add_argument(
+        '--config',
+        type=str,
+        help='Path to custom config file'
+    )
+    parser.add_argument(
+        '--create-config',
+        action='store_true',
+        help='Create example config file at default location'
+    )
     
     args = parser.parse_args()
+    
+    # Handle config creation
+    if args.create_config:
+        if create_example_config(verbose=True):
+            sys.exit(0)
+        else:
+            sys.exit(1)
+    
+    # Load custom config if specified
+    if args.config:
+        config = load_config(args.config, args.verbose)
+        # Re-extract configuration values
+        TERMINAL_APPS = config["terminals"]
+        EDITOR_APP = config["editor"]
+        LOGGING_ENABLED = config["logging"]["enabled"]
+        LOG_LEVEL = config["logging"]["level"]
     
     # Setup logging with appropriate settings
     logger = setup_logging(
         enabled=LOGGING_ENABLED and not args.no_log,
-        verbose=args.verbose
+        verbose=args.verbose,
+        level=LOG_LEVEL
     )
     
     logger.info("=" * 50)
     logger.info("macOS Dev Launcher started")
     logger.info(f"Arguments: {sys.argv[1:]}")
     logger.info(f"Verbose: {args.verbose}, Test mode: {args.test}, Logging: {not args.no_log}")
+    logger.info(f"Config file: {args.config if args.config else 'default'}")
     
     try:
         # Test mode
@@ -507,6 +667,8 @@ if __name__ == "__main__":
             print("  python3 open_dev_env.py --test")
             print("  python3 open_dev_env.py --verbose ~/projects/my-app")
             print("  python3 open_dev_env.py --no-log ~/projects/my-app")
+            print("  python3 open_dev_env.py --config ~/my-config.json ~/projects/my-app")
+            print("  python3 open_dev_env.py --create-config")
             print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
             logger.info("No paths provided, showing usage")
             sys.exit(1)

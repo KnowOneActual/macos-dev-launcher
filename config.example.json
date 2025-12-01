@@ -1,0 +1,41 @@
+{
+  "$schema": "https://github.com/KnowOneActual/macos-dev-launcher/blob/main/config.schema.json",
+  "version": "1.0",
+  
+  "terminals": [
+    "Ghostty",
+    "Kitty",
+    "Warp",
+    "Wave",
+    "iTerm",
+    "Alacritty",
+    "Terminal"
+  ],
+  
+  "editor": "VSCodium",
+  
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "file": "~/Library/Logs/macos-dev-launcher.log",
+    "max_bytes": 1048576,
+    "backup_count": 7
+  },
+  
+  "behavior": {
+    "auto_open_editor": true,
+    "remember_choices": false
+  },
+  
+  "_comments": {
+    "terminals": "List of terminal applications to show in picker (in order). Only installed apps will be shown.",
+    "editor": "Default editor application. Set to empty string to disable editor prompts.",
+    "logging.enabled": "Enable or disable file logging.",
+    "logging.level": "Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+    "logging.file": "Path to log file. Tilde (~) expands to user home directory.",
+    "logging.max_bytes": "Maximum size of log file before rotation (in bytes). Default: 1MB",
+    "logging.backup_count": "Number of backup log files to keep. Default: 7",
+    "behavior.auto_open_editor": "If true, show editor prompt after terminal selection.",
+    "behavior.remember_choices": "If true, remember last terminal/editor choice per project (Phase 2.4 feature)."
+  }
+}
