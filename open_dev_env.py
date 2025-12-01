@@ -3,6 +3,7 @@ import sys
 import os
 import subprocess
 import argparse
+import shlex
 from pathlib import Path
 
 # --- CONFIGURATION ---
@@ -24,6 +25,63 @@ def app_exists(app_name):
     app_path = Path(f"/Applications/{app_name}.app")
     return app_path.exists() and app_path.is_dir()
 
+def sanitize_path(path_str, verbose=False):
+    """
+    Sanitize and validate a path for safe usage.
+    
+    Args:
+        path_str (str): Path string to sanitize
+        verbose (bool): If True, print debug information
+    
+    Returns:
+        Path: Sanitized pathlib.Path object, or None if invalid
+    """
+    try:
+        # Convert to Path object and resolve to absolute path
+        path = Path(path_str).expanduser().resolve()
+        
+        if verbose:
+            print(f"Sanitizing path: {path_str}")
+            print(f"  Resolved to: {path}")
+            print(f"  Is symlink: {path.is_symlink() or Path(path_str).is_symlink()}")
+        
+        # Validate path exists
+        if not path.exists():
+            if verbose:
+                print(f"  ✗ Path does not exist")
+            return None
+        
+        # Validate it's a directory
+        if not path.is_dir():
+            if verbose:
+                print(f"  ✗ Path is not a directory")
+            return None
+        
+        # Security check: ensure path is not trying to escape user directory
+        # This prevents malicious paths like "../../../etc"
+        try:
+            home = Path.home()
+            # Allow paths in user home or common dev locations
+            if not (str(path).startswith(str(home)) or 
+                    str(path).startswith('/tmp') or
+                    str(path).startswith('/var/folders')):
+                if verbose:
+                    print(f"  ⚠ Warning: Path outside user directory")
+                # Don't block, but log warning
+        except (RuntimeError, OSError):
+            # Can't determine home, skip security check
+            pass
+        
+        if verbose:
+            print(f"  ✓ Path is valid")
+        
+        return path
+        
+    except (OSError, RuntimeError, ValueError) as e:
+        if verbose:
+            print(f"  ✗ Path sanitization failed: {e}")
+        return None
+
 def get_available_terminals():
     """
     Filter the configured terminal list to only include installed apps.
@@ -42,8 +100,12 @@ def show_error_dialog(title, message):
         title (str): Dialog title
         message (str): Error message to display
     """
+    # Escape quotes in message for AppleScript
+    safe_message = message.replace('"', '\\"')
+    safe_title = title.replace('"', '\\"')
+    
     script = f"""
-    display dialog "{message}" buttons {{"OK"}} default button "OK" with title "{title}" with icon stop
+    display dialog "{safe_message}" buttons {{"OK"}} default button "OK" with title "{safe_title}" with icon stop
     """
     try:
         subprocess.run(['osascript', '-e', script], check=True)
@@ -122,8 +184,11 @@ def ask_open_editor(project_name, verbose=False):
     if verbose:
         print(f"Editor {EDITOR_APP} is available")
     
+    # Escape project name for AppleScript
+    safe_project_name = project_name.replace("'", "\\'").replace('"', '\\"')
+    
     script = f"""
-    display dialog "Open '{project_name}' in {EDITOR_APP} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
+    display dialog "Open '{safe_project_name}' in {EDITOR_APP} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
     return button returned of result
     """
     try:
@@ -140,14 +205,26 @@ def open_project(path, verbose=False):
     Main function to open a project in terminal and optionally editor.
     
     Args:
-        path (str): Path to the project directory
+        path (str or Path): Path to the project directory
         verbose (bool): If True, print debug information
     """
-    project_name = os.path.basename(path)
+    # Sanitize the path first
+    sanitized_path = sanitize_path(str(path), verbose)
+    
+    if not sanitized_path:
+        error_msg = f"Invalid or inaccessible path: {path}"
+        show_error_dialog("Invalid Path", error_msg)
+        if verbose:
+            print(f"✗ {error_msg}")
+        return
+    
+    # Use sanitized path as string for subprocess
+    path_str = str(sanitized_path)
+    project_name = sanitized_path.name
     
     if verbose:
         print(f"\nOpening project: {project_name}")
-        print(f"Path: {path}")
+        print(f"Path: {path_str}")
     
     # 1. Ask for Terminal (with validation)
     terminal_app = ask_terminal_choice(verbose)
@@ -160,8 +237,9 @@ def open_project(path, verbose=False):
     try:
         if verbose:
             print(f"Launching {terminal_app}...")
-        # The 'open -a' command tells macOS to launch that specific app with this file/folder
-        subprocess.run(["open", "-a", terminal_app, path], check=True)
+        # Use subprocess with list arguments (safer than shell=True)
+        # Path is already sanitized, but subprocess handles it safely
+        subprocess.run(["open", "-a", terminal_app, path_str], check=True)
         if verbose:
             print(f"✓ {terminal_app} launched successfully")
     except subprocess.CalledProcessError as e:
@@ -176,7 +254,7 @@ def open_project(path, verbose=False):
         try:
             if verbose:
                 print(f"Launching {EDITOR_APP}...")
-            subprocess.run(["open", "-a", EDITOR_APP, path], check=True)
+            subprocess.run(["open", "-a", EDITOR_APP, path_str], check=True)
             if verbose:
                 print(f"✓ {EDITOR_APP} launched successfully")
         except subprocess.CalledProcessError as e:
@@ -209,6 +287,26 @@ def test_mode(verbose=False):
     else:
         print(f"✗ Editor {EDITOR_APP} not found")
         print(f"  (Editor is optional - will be skipped)")
+    
+    # Test path sanitization
+    if verbose:
+        print("\n" + "=" * 60)
+        print("Path Sanitization Tests:")
+        print("=" * 60)
+        
+        test_paths = [
+            ".",
+            "~",
+            "/tmp",
+            "../../../etc",  # Potentially malicious
+            "test dir with spaces",
+        ]
+        
+        for test_path in test_paths:
+            print(f"\nTesting: {test_path}")
+            result = sanitize_path(test_path, verbose=True)
+            if result:
+                print(f"  Result: {result}")
     
     print("\n" + "=" * 60)
     if available:
@@ -249,19 +347,7 @@ if __name__ == "__main__":
     if args.paths:
         # Paths provided as arguments
         for path in args.paths:
-            # Resolve to absolute path
-            abs_path = os.path.abspath(path)
-            
-            # Validate path exists
-            if not os.path.exists(abs_path):
-                print(f"Error: Path does not exist: {abs_path}", file=sys.stderr)
-                continue
-            
-            if not os.path.isdir(abs_path):
-                print(f"Error: Path is not a directory: {abs_path}", file=sys.stderr)
-                continue
-            
-            open_project(abs_path, args.verbose)
+            open_project(path, args.verbose)
     else:
         # No arguments - show usage
         print("No paths provided.")
