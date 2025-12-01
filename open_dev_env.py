@@ -4,11 +4,81 @@ import os
 import subprocess
 import argparse
 import shlex
+import logging
 from pathlib import Path
+from datetime import datetime, timedelta
+from logging.handlers import RotatingFileHandler
 
 # --- CONFIGURATION ---
 TERMINAL_APPS = ["Ghostty", "Kitty", "Warp", "Wave"] 
 EDITOR_APP = "VSCodium"
+
+# Logging configuration
+LOG_DIR = Path.home() / "Library" / "Logs"
+LOG_FILE = LOG_DIR / "macos-dev-launcher.log"
+LOG_MAX_BYTES = 1024 * 1024  # 1 MB
+LOG_BACKUP_COUNT = 7  # Keep 7 backup files (approximately 7 days if one file per day)
+LOGGING_ENABLED = True  # Can be overridden by config in future
+
+# --- LOGGING SETUP ---
+
+def setup_logging(enabled=True, verbose=False):
+    """
+    Configure logging with rotation and appropriate level.
+    
+    Args:
+        enabled (bool): Whether to enable file logging
+        verbose (bool): If True, set to DEBUG level and also log to console
+    
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    logger = logging.getLogger('macos-dev-launcher')
+    
+    # Set level based on verbose flag
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    
+    # Clear any existing handlers
+    logger.handlers.clear()
+    
+    if enabled:
+        try:
+            # Ensure log directory exists
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            
+            # Create rotating file handler
+            file_handler = RotatingFileHandler(
+                LOG_FILE,
+                maxBytes=LOG_MAX_BYTES,
+                backupCount=LOG_BACKUP_COUNT
+            )
+            file_handler.setLevel(logging.DEBUG)
+            
+            # Create formatter
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            file_handler.setFormatter(formatter)
+            
+            logger.addHandler(file_handler)
+            
+        except (OSError, PermissionError) as e:
+            # If logging setup fails, print warning but continue
+            print(f"Warning: Could not set up logging: {e}", file=sys.stderr)
+    
+    # Add console handler if verbose
+    if verbose:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.DEBUG)
+        console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+    
+    return logger
+
+# Initialize logger (will be reconfigured in main)
+logger = logging.getLogger('macos-dev-launcher')
 
 # --- HELPER FUNCTIONS ---
 
@@ -23,7 +93,9 @@ def app_exists(app_name):
         bool: True if app exists, False otherwise
     """
     app_path = Path(f"/Applications/{app_name}.app")
-    return app_path.exists() and app_path.is_dir()
+    exists = app_path.exists() and app_path.is_dir()
+    logger.debug(f"Checking if {app_name} exists: {exists}")
+    return exists
 
 def sanitize_path(path_str, verbose=False):
     """
@@ -36,9 +108,14 @@ def sanitize_path(path_str, verbose=False):
     Returns:
         Path: Sanitized pathlib.Path object, or None if invalid
     """
+    logger.debug(f"Sanitizing path: {path_str}")
+    
     try:
         # Convert to Path object and resolve to absolute path
         path = Path(path_str).expanduser().resolve()
+        
+        logger.debug(f"  Resolved to: {path}")
+        logger.debug(f"  Is symlink: {path.is_symlink() or Path(path_str).is_symlink()}")
         
         if verbose:
             print(f"Sanitizing path: {path_str}")
@@ -47,12 +124,14 @@ def sanitize_path(path_str, verbose=False):
         
         # Validate path exists
         if not path.exists():
+            logger.warning(f"Path does not exist: {path}")
             if verbose:
                 print(f"  ✗ Path does not exist")
             return None
         
         # Validate it's a directory
         if not path.is_dir():
+            logger.warning(f"Path is not a directory: {path}")
             if verbose:
                 print(f"  ✗ Path is not a directory")
             return None
@@ -65,19 +144,23 @@ def sanitize_path(path_str, verbose=False):
             if not (str(path).startswith(str(home)) or 
                     str(path).startswith('/tmp') or
                     str(path).startswith('/var/folders')):
+                logger.warning(f"Path outside user directory: {path}")
                 if verbose:
                     print(f"  ⚠ Warning: Path outside user directory")
                 # Don't block, but log warning
-        except (RuntimeError, OSError):
+        except (RuntimeError, OSError) as e:
+            logger.debug(f"Could not determine home directory: {e}")
             # Can't determine home, skip security check
             pass
         
+        logger.info(f"Path validated successfully: {path}")
         if verbose:
             print(f"  ✓ Path is valid")
         
         return path
         
     except (OSError, RuntimeError, ValueError) as e:
+        logger.error(f"Path sanitization failed for '{path_str}': {e}")
         if verbose:
             print(f"  ✗ Path sanitization failed: {e}")
         return None
@@ -90,6 +173,7 @@ def get_available_terminals():
         list: List of installed terminal app names
     """
     available = [app for app in TERMINAL_APPS if app_exists(app)]
+    logger.info(f"Available terminals: {available} (out of {TERMINAL_APPS})")
     return available
 
 def show_error_dialog(title, message):
@@ -100,6 +184,8 @@ def show_error_dialog(title, message):
         title (str): Dialog title
         message (str): Error message to display
     """
+    logger.error(f"Error dialog: {title} - {message}")
+    
     # Escape quotes in message for AppleScript
     safe_message = message.replace('"', '\\"')
     safe_title = title.replace('"', '\\"')
@@ -109,7 +195,8 @@ def show_error_dialog(title, message):
     """
     try:
         subprocess.run(['osascript', '-e', script], check=True)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to display error dialog: {e}")
         # If dialog fails, at least print to stderr
         print(f"ERROR: {title} - {message}", file=sys.stderr)
 
@@ -124,6 +211,8 @@ def ask_terminal_choice(verbose=False):
     Returns:
         str: Selected terminal name, or None if cancelled/no terminals available
     """
+    logger.debug("Asking user to choose terminal")
+    
     # Get only installed terminals
     available_terminals = get_available_terminals()
     
@@ -133,6 +222,7 @@ def ask_terminal_choice(verbose=False):
     
     # Handle case where no valid terminals are found
     if not available_terminals:
+        logger.error("No configured terminals are installed")
         show_error_dialog(
             "No Terminals Found",
             "None of the configured terminal applications are installed. "
@@ -155,10 +245,18 @@ def ask_terminal_choice(verbose=False):
     """
     try:
         result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
-        if verbose:
-            print(f"User selected: {result}")
-        return None if result == "CANCEL" else result
+        if result == "CANCEL":
+            logger.info("User cancelled terminal selection")
+            if verbose:
+                print(f"User selected: {result}")
+            return None
+        else:
+            logger.info(f"User selected terminal: {result}")
+            if verbose:
+                print(f"User selected: {result}")
+            return result
     except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to display terminal picker: {e}")
         show_error_dialog("Terminal Selection Failed", f"Could not display terminal picker: {e}")
         return None
 
@@ -174,8 +272,11 @@ def ask_open_editor(project_name, verbose=False):
     Returns:
         bool: True if user wants to open editor and it exists, False otherwise
     """
+    logger.debug(f"Asking if user wants to open editor for project: {project_name}")
+    
     # Check if editor exists before asking
     if not app_exists(EDITOR_APP):
+        logger.info(f"Editor {EDITOR_APP} not installed, skipping editor prompt")
         if verbose:
             print(f"Editor {EDITOR_APP} not installed, skipping...")
         # Silently skip if editor not installed (don't interrupt workflow)
@@ -193,10 +294,13 @@ def ask_open_editor(project_name, verbose=False):
     """
     try:
         result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
+        open_editor = result == "Yes"
+        logger.info(f"User chose to open editor: {open_editor}")
         if verbose:
-            print(f"User chose to open editor: {result == 'Yes'}")
-        return result == "Yes"
-    except subprocess.CalledProcessError:
+            print(f"User chose to open editor: {open_editor}")
+        return open_editor
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to display editor prompt: {e}")
         # If dialog fails, default to not opening editor
         return False
 
@@ -208,11 +312,14 @@ def open_project(path, verbose=False):
         path (str or Path): Path to the project directory
         verbose (bool): If True, print debug information
     """
+    logger.info(f"Opening project: {path}")
+    
     # Sanitize the path first
     sanitized_path = sanitize_path(str(path), verbose)
     
     if not sanitized_path:
         error_msg = f"Invalid or inaccessible path: {path}"
+        logger.error(error_msg)
         show_error_dialog("Invalid Path", error_msg)
         if verbose:
             print(f"✗ {error_msg}")
@@ -222,6 +329,8 @@ def open_project(path, verbose=False):
     path_str = str(sanitized_path)
     project_name = sanitized_path.name
     
+    logger.info(f"Project name: {project_name}, Path: {path_str}")
+    
     if verbose:
         print(f"\nOpening project: {project_name}")
         print(f"Path: {path_str}")
@@ -229,20 +338,24 @@ def open_project(path, verbose=False):
     # 1. Ask for Terminal (with validation)
     terminal_app = ask_terminal_choice(verbose)
     if not terminal_app:
+        logger.info("No terminal selected, aborting")
         if verbose:
             print("No terminal selected or available")
         return  # User cancelled or no terminals available
 
     # 2. Open Terminal
     try:
+        logger.info(f"Launching {terminal_app} for {project_name}")
         if verbose:
             print(f"Launching {terminal_app}...")
         # Use subprocess with list arguments (safer than shell=True)
         # Path is already sanitized, but subprocess handles it safely
         subprocess.run(["open", "-a", terminal_app, path_str], check=True)
+        logger.info(f"Successfully launched {terminal_app}")
         if verbose:
             print(f"✓ {terminal_app} launched successfully")
     except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to launch {terminal_app}: {e}")
         show_error_dialog(
             "Failed to Open Terminal",
             f"Could not launch {terminal_app}. Error: {e}"
@@ -252,22 +365,31 @@ def open_project(path, verbose=False):
     # 3. Ask for Editor (with validation)
     if ask_open_editor(project_name, verbose):
         try:
+            logger.info(f"Launching {EDITOR_APP} for {project_name}")
             if verbose:
                 print(f"Launching {EDITOR_APP}...")
             subprocess.run(["open", "-a", EDITOR_APP, path_str], check=True)
+            logger.info(f"Successfully launched {EDITOR_APP}")
             if verbose:
                 print(f"✓ {EDITOR_APP} launched successfully")
         except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to launch {EDITOR_APP}: {e}")
             show_error_dialog(
                 "Failed to Open Editor",
                 f"Could not launch {EDITOR_APP}. Error: {e}"
             )
             # Continue anyway - terminal already opened successfully
+    else:
+        logger.info("User chose not to open editor")
+    
+    logger.info(f"Finished opening project: {project_name}")
 
 def test_mode(verbose=False):
     """
     Test mode - validates configuration without launching anything.
     """
+    logger.info("Running in test mode")
+    
     print("=" * 60)
     print("macOS Dev Launcher - Configuration Test")
     print("=" * 60)
@@ -287,6 +409,18 @@ def test_mode(verbose=False):
     else:
         print(f"✗ Editor {EDITOR_APP} not found")
         print(f"  (Editor is optional - will be skipped)")
+    
+    # Logging info
+    print(f"\nLogging Configuration:")
+    print(f"  Log file: {LOG_FILE}")
+    print(f"  Logging enabled: {LOGGING_ENABLED}")
+    print(f"  Max log size: {LOG_MAX_BYTES / 1024:.0f} KB")
+    print(f"  Backup count: {LOG_BACKUP_COUNT}")
+    if LOG_FILE.exists():
+        size = LOG_FILE.stat().st_size
+        print(f"  Current log size: {size / 1024:.2f} KB")
+    else:
+        print(f"  Log file does not exist yet")
     
     # Test path sanitization
     if verbose:
@@ -335,25 +469,52 @@ if __name__ == "__main__":
         action='store_true',
         help='Test mode - validate configuration without opening anything'
     )
+    parser.add_argument(
+        '--no-log',
+        action='store_true',
+        help='Disable file logging'
+    )
     
     args = parser.parse_args()
     
-    # Test mode
-    if args.test:
-        test_mode(args.verbose)
-        sys.exit(0)
+    # Setup logging with appropriate settings
+    logger = setup_logging(
+        enabled=LOGGING_ENABLED and not args.no_log,
+        verbose=args.verbose
+    )
     
-    # Handle paths
-    if args.paths:
-        # Paths provided as arguments
-        for path in args.paths:
-            open_project(path, args.verbose)
-    else:
-        # No arguments - show usage
-        print("No paths provided.")
-        print("\nUsage examples:")
-        print("  python3 open_dev_env.py ~/projects/my-app")
-        print("  python3 open_dev_env.py --test")
-        print("  python3 open_dev_env.py --verbose ~/projects/my-app")
-        print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
-        sys.exit(1)
+    logger.info("=" * 50)
+    logger.info("macOS Dev Launcher started")
+    logger.info(f"Arguments: {sys.argv[1:]}")
+    logger.info(f"Verbose: {args.verbose}, Test mode: {args.test}, Logging: {not args.no_log}")
+    
+    try:
+        # Test mode
+        if args.test:
+            test_mode(args.verbose)
+            sys.exit(0)
+        
+        # Handle paths
+        if args.paths:
+            # Paths provided as arguments
+            for path in args.paths:
+                open_project(path, args.verbose)
+        else:
+            # No arguments - show usage
+            print("No paths provided.")
+            print("\nUsage examples:")
+            print("  python3 open_dev_env.py ~/projects/my-app")
+            print("  python3 open_dev_env.py --test")
+            print("  python3 open_dev_env.py --verbose ~/projects/my-app")
+            print("  python3 open_dev_env.py --no-log ~/projects/my-app")
+            print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
+            logger.info("No paths provided, showing usage")
+            sys.exit(1)
+    
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        raise
+    
+    finally:
+        logger.info("macOS Dev Launcher finished")
+        logger.info("=" * 50)
