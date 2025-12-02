@@ -34,19 +34,19 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
+    echo -e "${GREEN}\u2713${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗${NC} $1"
+    echo -e "${RED}\u2717${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
+    echo -e "${YELLOW}\u26a0${NC} $1"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
+    echo -e "${BLUE}\u2139${NC} $1"
 }
 
 # Show usage
@@ -166,9 +166,9 @@ print_header "macOS Dev Environment Launcher - Installation"
 
 echo
 print_info "This script will install the Dev Environment Launcher:"
-echo "  • Python script: $INSTALL_DIR/$SCRIPT_NAME"
-echo "  • Automator Quick Action"
-echo "  • Configuration file: $CONFIG_FILE"
+echo "  \u2022 Python script: $INSTALL_DIR/$SCRIPT_NAME"
+echo "  \u2022 Automator Quick Action"
+echo "  \u2022 Configuration file: $CONFIG_FILE"
 echo
 
 # Check if already installed
@@ -226,10 +226,10 @@ if [ -f "$SCRIPT_NAME" ]; then
 else
     # Not in repo, try to download from GitHub
     print_info "Downloading from GitHub..."
-    local github_url="https://raw.githubusercontent.com/KnowOneActual/macos-dev-launcher/main/open_dev_env.py"
+    GITHUB_URL="https://raw.githubusercontent.com/KnowOneActual/macos-dev-launcher/main/open_dev_env.py"
     
     if command -v curl &> /dev/null; then
-        if curl -fsSL "$github_url" -o "$INSTALL_DIR/$SCRIPT_NAME"; then
+        if curl -fsSL "$GITHUB_URL" -o "$INSTALL_DIR/$SCRIPT_NAME"; then
             print_success "Downloaded script to: $INSTALL_DIR/$SCRIPT_NAME"
         else
             print_error "Failed to download script from GitHub"
@@ -262,17 +262,17 @@ fi
 # Step 5: Create Automator Quick Action
 print_info "Creating Automator Quick Action..."
 
-local automator_dir="$HOME/Library/Services"
-local quick_action="$automator_dir/$QUICK_ACTION_NAME.workflow"
+AUTOMATOR_DIR="$HOME/Library/Services"
+QUICK_ACTION="$AUTOMATOR_DIR/$QUICK_ACTION_NAME.workflow"
 
 # Create Services directory if it doesn't exist
-mkdir -p "$automator_dir"
+mkdir -p "$AUTOMATOR_DIR"
 
 # Create the workflow
-mkdir -p "$quick_action/Contents"
+mkdir -p "$QUICK_ACTION/Contents"
 
 # Create Info.plist
-cat > "$quick_action/Contents/Info.plist" << EOF
+cat > "$QUICK_ACTION/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -303,7 +303,7 @@ cat > "$quick_action/Contents/Info.plist" << EOF
 EOF
 
 # Create document.wflow
-cat > "$quick_action/Contents/document.wflow" << EOF
+cat > "$QUICK_ACTION/Contents/document.wflow" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -517,7 +517,7 @@ cat > "$quick_action/Contents/document.wflow" << EOF
 </plist>
 EOF
 
-if [ -d "$quick_action" ]; then
+if [ -d "$QUICK_ACTION" ]; then
     print_success "Created Quick Action: $QUICK_ACTION_NAME"
 else
     print_error "Failed to create Quick Action"
@@ -542,9 +542,9 @@ echo
 print_success "Dev Environment Launcher is now installed!"
 echo
 print_info "Installed components:"
-echo "  • Script: $INSTALL_DIR/$SCRIPT_NAME"
-echo "  • Config: $CONFIG_FILE"
-echo "  • Quick Action: $QUICK_ACTION_NAME"
+echo "  \u2022 Script: $INSTALL_DIR/$SCRIPT_NAME"
+echo "  \u2022 Config: $CONFIG_FILE"
+echo "  \u2022 Quick Action: $QUICK_ACTION_NAME"
 echo
 print_info "Next steps:"
 echo "  1. Restart Finder to activate Quick Action:"
@@ -557,11 +557,11 @@ echo "  3. Configure your preferences:"
 echo "     $ open $CONFIG_FILE"
 echo
 echo "  4. Use it! Right-click any folder in Finder"
-echo "     → Quick Actions → $QUICK_ACTION_NAME"
+echo "     \u2192 Quick Actions \u2192 $QUICK_ACTION_NAME"
 echo
 print_info "Documentation:"
-echo "  • README: https://github.com/KnowOneActual/macos-dev-launcher"
-echo "  • Config guide: https://github.com/KnowOneActual/macos-dev-launcher#configuration"
+echo "  \u2022 README: https://github.com/KnowOneActual/macos-dev-launcher"
+echo "  \u2022 Config guide: https://github.com/KnowOneActual/macos-dev-launcher#configuration"
 echo
-print_success "Happy coding! 🚀"
+print_success "Happy coding! \ud83d\ude80"
 echo
