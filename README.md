@@ -5,6 +5,8 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Version](https://img.shields.io/badge/Version-2.0.0-blue)
 
+# I'm currently working on refactoring, and I'll be updating it frequently over the next several weeks. Thanks for your patience!
+
 A macOS Quick Action that streamlines your workflow startup. 
 Instead of manually opening a terminal, navigating to a project, and then launching your editor, this script lets you right-click any project folder and ask: **"Which terminal should we use today?"**
 
@@ -42,253 +44,238 @@ Instead of manually opening a terminal, navigating to a project, and then launch
 - Faster workflow when both apps needed
 - Maintains full backward compatibility
 
+## Quick Start
+
+**Add to `~/.zshrc`:**
+
+```bash
+dev() {
+    python3 "$HOME/github_repo/macos-dev-launcher/open_dev_env.py" "${1:-.}"
+}
+```
+
+**Reload:**
+```bash
+source ~/.zshrc
+```
+
+**Use:**
+```bash
+dev .                    # Current directory
+dev my-project           # Searches common paths
+dev ~/full/path/project  # Full path
+```
 
 ---
 
+## What It Does
+
+When you run `dev`, it:
+1. Opens your terminal in the project directory
+2. Asks which terminal you want (Ghostty, Kitty, Warp, etc.)
+3. Asks which editor you want (VSCodium, etc.)
+4. Remembers your choices for next time
+
 ## Installation
 
-### One-Command Script Install (Recommended)
-
+### Repo Setup
 ```bash
-# Install script and config only
-curl -fsSL https://raw.githubusercontent.com/KnowOneActual/macos-dev-launcher/main/install.sh | bash
+git clone https://github.com/KnowOneActual/macos-dev-launcher.git ~/github_repo/macos-dev-launcher
+cd ~/github_repo/macos-dev-launcher
+python3 open_dev_env.py --create-config
 ```
 
-Or clone and install:
+### Shell Integration
+Add this to `~/.zshrc` or `~/.bash_profile`:
+
 ```bash
-git clone https://github.com/KnowOneActual/macos-dev-launcher.git
-cd macos-dev-launcher
-./install.sh
+dev() {
+    python3 "$HOME/github_repo/macos-dev-launcher/open_dev_env.py" "${1:-.}"
+}
 ```
 
-This installs:
-- ✅ Script: `~/scripts/open_dev_env.py`
-- ✅ Config: `~/.config/macos-dev-launcher/config.json`
-- ✅ Ready to use with manual Quick Action setup below
-
-**After install:**
+Then reload:
 ```bash
-killall Finder  # Refresh Finder menu
-python3 ~/scripts/open_dev_env.py --test  # Verify installation
-```
-
-### Manual Quick Action Setup
-
-1. Open **Automator** (Spotlight: `Cmd+Space` → "Automator")
-
-2. **New Document** → **Quick Action** → **Choose**
-
-3. Set top options:
-   ```
-   Workflow receives current: folders
-   in: Finder
-   ```
-
-4. Add **Run Shell Script** action:
-   - Shell: `/bin/bash`
-   - Pass input: `as arguments`
-
-5. Paste this exact script:
-   ```bash
-   /usr/bin/python3 "$HOME/scripts/open_dev_env.py" "$@"
-   ```
-
-6. **File** → **Save** → Name: `Open Dev Environment`
-
-7. **Done!** Right-click folders → **Quick Actions** → **Open Dev Environment**
-
-### Uninstall
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/KnowOneActual/macos-dev-launcher/main/install.sh | bash -s -- --uninstall
+source ~/.zshrc
 ```
 
 ---
 
 ## Usage
 
-### Via Finder (Quick Action)
-
-1. Right-click a project folder in Finder
-2. Select **Quick Actions > Open Dev Environment**
-3. Pick your terminal from the list (remembers your last choice!)
-4. Choose your editor (or skip)
-
-**That's it!** Your terminal and editor will launch in the selected directory.
-
-### Via Command Line
-
-You can also launch directly from the terminal:
-
+### Open current directory
 ```bash
-# Launch with picker dialogs
-python3 ~/scripts/open_dev_env.py ~/projects/my-app
+dev .
+```
 
-# Test configuration
-python3 ~/scripts/open_dev_env.py --test
+### Open by project name (searches common paths)
+```bash
+dev my-project
+```
+Searches in: `~/github_repo`, `~/projects`, `~/work`, `~/dev`, `~/src`
 
-# Verbose mode for debugging
-python3 ~/scripts/open_dev_env.py --verbose ~/projects/my-app
+### Open with full path
+```bash
+dev ~/any/path/to/project
+```
 
-# Use custom config file
-python3 ~/scripts/open_dev_env.py --config ~/my-config.json ~/projects/my-app
+### Test installation
+```bash
+python3 open_dev_env.py --test
 ```
 
 ---
 
 ## Configuration
 
-### Quick Start
-
-Create your configuration file:
-
-```bash
-python3 ~/scripts/open_dev_env.py --create-config
-```
-
-This creates `~/.config/macos-dev-launcher/config.json` with sensible defaults.
-
-**Edit your config:**
-```bash
-open ~/.config/macos-dev-launcher/config.json
-```
-
-### Configuration Options
-
-The config file supports the following options:
-
-#### Terminals and Editors
+Edit `~/.config/macos-dev-launcher/config.json`:
 
 ```json
 {
-  "terminals": [
-    "Ghostty",
-    "Kitty",
-    "Warp",
-    "Wave",
-    "iTerm",
-    "Alacritty",
-    "Terminal"
-  ],
-  "editors": [
-    "VSCodium",
-    "Visual Studio Code",
-    "Cursor",
-    "Zed"
-  ]
-}
-```
-
-#### Custom Launch Arguments
-
-```json
-{
-  "app_args": {
-    "Warp": ["--profile", "Work"],
-    "iTerm": ["--fullscreen"],
-    "VSCodium": ["--new-window"],
-    "Visual Studio Code": ["--new-window", "--disable-extensions"]
-  }
-}
-```
-
-#### Memory & Behavior
-
-```json
-{
-  "remember_choices": true,
-  "auto_open_editor": true
-}
-```
-
-#### Logging Configuration
-
-```json
-{
+  "terminals": ["Ghostty", "Kitty", "Warp", "Wave"],
+  "editors": ["VSCodium"],
+  "behavior": {
+    "auto_open_editor": true,
+    "remember_choices": true,
+    "combined_dialog": true
+  },
   "logging": {
     "enabled": true,
     "level": "INFO",
-    "file": "~/Library/Logs/macos-dev-launcher.log",
-    "max_bytes": 1048576,
-    "backup_count": 7
+    "file": "~/Library/Logs/macos-dev-launcher.log"
   }
 }
 ```
 
-**Full example configs in `config.example.json`**
+### Options
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `terminals` | List of apps | Terminal apps to choose from |
+| `editors` | ["VSCodium"] | Editor apps to choose from |
+| `auto_open_editor` | true | Open editor after terminal |
+| `remember_choices` | false | Save your terminal/editor choice per project |
+| `combined_dialog` | true | Single dialog for both selections |
+| `logging.enabled` | true | Log to file |
 
 ---
 
-## CLI Usage
+## Features
+
+✅ **Smart app detection** - Only shows installed apps
+✅ **Project memory** - Remembers your last choices
+✅ **Combined dialog** - One screen for terminal + editor
+✅ **Validation** - Checks paths and apps before launching
+✅ **Logging** - Tracks what happens
+✅ **Config file** - Customize everything
+✅ **Error handling** - Clear messages if something goes wrong
+
+---
+
+## Examples
+
+### Setup for GitHub projects
+Assuming projects are in `~/github_repo/`:
 
 ```bash
-# Launch with dialogs
-python3 open_dev_env.py ~/projects/my-app
-
-# Test configuration (no apps launched)
-python3 open_dev_env.py --test
-
-# Verbose output for debugging
-python3 open_dev_env.py --test --verbose
-
-# Disable logging for this run
-python3 open_dev_env.py --no-log ~/projects/my-app
-
-# Create example config file
-python3 open_dev_env.py --create-config
+dev my-web-app       # Opens ~/github_repo/my-web-app
+dev .                # Opens current directory
 ```
+
+### With custom search paths
+Edit your shell config to add more search directories:
+
+```bash
+dev() {
+    # Add your custom paths here by editing the Python script
+    python3 "$HOME/github_repo/macos-dev-launcher/open_dev_env.py" "${1:-.}"
+}
+```
+
+Or create a custom config at `~/.config/macos-dev-launcher/config.json`.
+
+### Remember choices per project
+Enable in config:
+
+```json
+{
+  "behavior": {
+    "remember_choices": true
+  }
+}
+```
+
+Now when you open a project, next time it remembers if you chose Ghostty + VSCodium.
 
 ---
 
-## Documentation
+## How It Works
 
-- 📋 [ROADMAP.md](ROADMAP.md) - Development roadmap
-- 🎨 [CUSTOM_ARGS.md](CUSTOM_ARGS.md) - Custom launch arguments
-- 📜 [CHANGELOG.md](CHANGELOG.md) - Version history
-- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
-
-**Current:** v2.0.0 (Phase 1+2+Memory System Complete)
+1. **You run:** `dev my-project`
+2. **Script finds:** `~/github_repo/my-project`
+3. **Dialog appears:** Pick terminal (Ghostty, Kitty, Warp?)
+4. **Dialog appears:** Pick editor (VSCodium, none, other?)
+5. **Terminal opens:** At project directory
+6. **Editor opens:** (if you chose one)
+7. **Saved:** Your choices for next time (if enabled)
 
 ---
 
 ## Troubleshooting
 
-**Quick Action doesn't appear:**
-```bash
-killall Finder
-```
+### `dev: command not found`
+Make sure you added the function to `~/.zshrc` and ran `source ~/.zshrc`.
 
-**App not launching:**
-```bash
-python3 ~/scripts/open_dev_env.py --test --verbose
-```
+### `python3: can't open file`
+Check that the repo is at `~/github_repo/macos-dev-launcher` and the file exists there.
 
-**Config issues:**
-```bash
-python3 -m json.tool ~/.config/macos-dev-launcher/config.json
-```
+### Project not found
+Make sure project is in one of these directories:
+- `~/github_repo/`
+- `~/projects/`
+- `~/work/`
+- `~/dev/`
+- `~/src/`
+
+Or use the full path: `dev ~/any/path/to/project`
+
+### No terminals showing
+Install one of these:
+- [Ghostty](https://ghostty.org)
+- [Kitty](https://sw.kovidgoyal.net/kitty/)
+- [Warp](https://www.warp.dev)
+- [Wave](https://www.waveterm.dev)
 
 ---
 
-## Supported Applications
+## Phases
 
-**Terminals:** Ghostty, Kitty, Warp, Wave, iTerm2, Alacritty, Terminal
-**Editors:** VS Code, VSCodium, Cursor, Zed, JetBrains IDEs
-
-**Any app in `/Applications` works!**
+**Phase 1:** Path validation, app checking, error handling
+**Phase 2:** Config files, project memory, logging
+**Phase 3.1:** Combined dialog for terminal + editor
+**Phase 4:** Simple shell command `dev`
 
 ---
 
-## Contributing
+## Requirements
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+- macOS 10.14+
+- Python 3.7+
+- At least one terminal app installed
+- (Optional) An editor app
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE).
+MIT
 
 ---
 
-**⭐ Star this repo if useful!**
+## Contributing
+
+Found a bug? Have an idea? Open an issue on GitHub.
+
+---
+
+**That's it. Simple, clean, ready to use.** ⚡
