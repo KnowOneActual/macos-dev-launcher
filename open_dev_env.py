@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
 # Config file location
 CONFIG_DIR = Path.home() / ".config" / "macos-dev-launcher"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+HISTORY_FILE = CONFIG_DIR / "history.json"  # PHASE 2.4: History storage
 
 # --- CONFIGURATION LOADING ---
 
@@ -197,6 +198,95 @@ def setup_logging(enabled=True, verbose=False, level=None):
 # Initialize logger (will be reconfigured in main)
 logger = logging.getLogger('macos-dev-launcher')
 
+# --- PHASE 2.4: HISTORY/MEMORY FUNCTIONS ---
+
+def load_history():
+    """
+    Load user's choice history from history.json.
+    
+    Returns:
+        dict: History dictionary mapping project paths to choices
+    """
+    if not HISTORY_FILE.exists():
+        logger.debug(f"History file does not exist: {HISTORY_FILE}")
+        return {}
+    
+    try:
+        with open(HISTORY_FILE, 'r') as f:
+            history = json.load(f)
+        logger.debug(f"Loaded history with {len(history)} projects")
+        return history
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Could not load history from {HISTORY_FILE}: {e}")
+        return {}
+
+def save_choice(project_path, terminal, editor):
+    """
+    Save user's terminal/editor choice for this project.
+    
+    Args:
+        project_path (Path): Path to the project directory
+        terminal (str): Terminal app name that was used
+        editor (str or None): Editor app name that was used (None if skipped)
+    """
+    if not REMEMBER_CHOICES:
+        logger.debug("remember_choices is disabled, not saving choice")
+        return
+    
+    try:
+        # Load existing history
+        history = load_history()
+        
+        # Update with new choice
+        path_key = str(project_path)
+        history[path_key] = {
+            "terminal": terminal,
+            "editor": editor,
+            "last_used": datetime.now().isoformat()
+        }
+        
+        # Ensure config directory exists
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Save updated history
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump(history, f, indent=2)
+        
+        logger.info(f"Saved choice for {project_path.name}: terminal={terminal}, editor={editor}")
+        
+    except (OSError, PermissionError, json.JSONDecodeError) as e:
+        logger.warning(f"Could not save choice history: {e}")
+        # Continue anyway - not critical
+
+def get_last_choice(project_path):
+    """
+    Get the last terminal/editor used for this project.
+    
+    Args:
+        project_path (Path): Path to the project directory
+    
+    Returns:
+        tuple: (terminal_name, editor_name) or (None, None) if no history
+    """
+    if not REMEMBER_CHOICES:
+        logger.debug("remember_choices is disabled, not loading choice")
+        return None, None
+    
+    history = load_history()
+    path_key = str(project_path)
+    
+    if path_key in history:
+        choice = history[path_key]
+        terminal = choice.get("terminal")
+        editor = choice.get("editor")
+        last_used = choice.get("last_used")
+        
+        logger.debug(f"Found history for {project_path.name}: terminal={terminal}, editor={editor}, last_used={last_used}")
+        return terminal, editor
+    else:
+        logger.debug(f"No history found for {project_path.name}")
+        return None, None
+
 # --- HELPER FUNCTIONS ---
 
 def app_exists(app_name):
@@ -330,12 +420,14 @@ def show_error_dialog(title, message):
         # If dialog fails, at least print to stderr
         print(f"ERROR: {title} - {message}", file=sys.stderr)
 
-def ask_terminal_choice(verbose=False):
+def ask_terminal_choice(project_path, verbose=False):
     """
     Pops up a list of available terminals to choose from.
     Only shows terminals that are actually installed.
+    Uses history to pre-select last choice if available.
     
     Args:
+        project_path (Path): Path to project (for history lookup)
         verbose (bool): If True, print debug information
     
     Returns:
@@ -360,13 +452,23 @@ def ask_terminal_choice(verbose=False):
         )
         return None
     
+    # PHASE 2.4: Get last choice from history
+    last_terminal, _ = get_last_choice(project_path)
+    
+    # Determine default selection
+    if last_terminal and last_terminal in available_terminals:
+        default = last_terminal
+        logger.debug(f"Using last terminal choice as default: {default}")
+    else:
+        default = available_terminals[0]
+        logger.debug(f"Using first available terminal as default: {default}")
+    
     # AppleScript list format: {"Ghostty", "Kitty", "Warp", "Wave"}
     options_str = "{" + ", ".join([f'"{app}"' for app in available_terminals]) + "}"
     
-    # Default to the first available item
     script = f"""
     set appList to {options_str}
-    set choice to choose from list appList with prompt "🚀 Open project in which terminal?" default items {{"{available_terminals[0]}"}}
+    set choice to choose from list appList with prompt "🚀 Open project in which terminal?" default items {{"{default}"}}
     if choice is false then
         return "CANCEL"
     else
@@ -390,12 +492,14 @@ def ask_terminal_choice(verbose=False):
         show_error_dialog("Terminal Selection Failed", f"Could not display terminal picker: {e}")
         return None
 
-def ask_editor_choice(project_name, verbose=False):
+def ask_editor_choice(project_name, project_path, verbose=False):
     """
     Ask user which editor to open, or if they want to open an editor at all.
+    Uses history to pre-select last choice if available.
     
     Args:
         project_name (str): Name of the project folder
+        project_path (Path): Path to project (for history lookup)
         verbose (bool): If True, print debug information
     
     Returns:
@@ -422,13 +526,24 @@ def ask_editor_choice(project_name, verbose=False):
             print(f"No editors installed, skipping...")
         return None
     
+    # PHASE 2.4: Get last choice from history
+    _, last_editor = get_last_choice(project_path)
+    
     # If only one editor, ask yes/no instead of showing picker
     if len(available_editors) == 1:
         editor = available_editors[0]
         safe_project_name = project_name.replace("'", "\\\\'").replace('"', '\\\\"')
         
+        # Determine default button based on history
+        if last_editor == editor:
+            default_button = "Yes"
+        elif last_editor is None:  # User previously chose "No"
+            default_button = "No"
+        else:
+            default_button = "Yes"  # Fallback
+        
         script = f"""
-        display dialog "Open '{safe_project_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
+        display dialog "Open '{safe_project_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "{default_button}" with icon note
         return button returned of result
         """
         try:
@@ -452,9 +567,20 @@ def ask_editor_choice(project_name, verbose=False):
     editor_list_with_none = ["None (Terminal Only)"] + available_editors
     options_str = "{" + ", ".join([f'"{app}"' for app in editor_list_with_none]) + "}"
     
+    # Determine default selection based on history
+    if last_editor and last_editor in available_editors:
+        default = last_editor
+        logger.debug(f"Using last editor choice as default: {default}")
+    elif last_editor is None and REMEMBER_CHOICES:  # User previously chose "None"
+        default = "None (Terminal Only)"
+        logger.debug("Using 'None' as default based on history")
+    else:
+        default = available_editors[0]
+        logger.debug(f"Using first available editor as default: {default}")
+    
     script = f"""
     set appList to {options_str}
-    set choice to choose from list appList with prompt "📝 Open '{safe_project_name}' in which editor?" default items {{"{available_editors[0]}"}}
+    set choice to choose from list appList with prompt "📝 Open '{safe_project_name}' in which editor?" default items {{"{default}"}}
     if choice is false then
         return "CANCEL"
     else
@@ -506,11 +632,11 @@ def open_project(path, verbose=False):
     logger.info(f"Project name: {project_name}, Path: {path_str}")
     
     if verbose:
-        print(f"\\nOpening project: {project_name}")
+        print(f"\nOpening project: {project_name}")
         print(f"Path: {path_str}")
     
-    # 1. Ask for Terminal (with validation)
-    terminal_app = ask_terminal_choice(verbose)
+    # 1. Ask for Terminal (with validation and history)
+    terminal_app = ask_terminal_choice(sanitized_path, verbose)
     if not terminal_app:
         logger.info("No terminal selected, aborting")
         if verbose:
@@ -539,8 +665,8 @@ def open_project(path, verbose=False):
         )
         return
     
-    # 3. Ask for Editor (with multi-editor support)
-    editor_app = ask_editor_choice(project_name, verbose)
+    # 3. Ask for Editor (with multi-editor support and history)
+    editor_app = ask_editor_choice(project_name, sanitized_path, verbose)
     if editor_app:
         try:
             logger.info(f"Launching {editor_app} for {project_name}")
@@ -564,6 +690,9 @@ def open_project(path, verbose=False):
             # Continue anyway - terminal already opened successfully
     else:
         logger.info("User chose not to open editor")
+    
+    # PHASE 2.4: Save choices to history
+    save_choice(sanitized_path, terminal_app, editor_app)
     
     logger.info(f"Finished opening project: {project_name}")
 
@@ -640,7 +769,36 @@ def test_mode(verbose=False):
     print()
     print(f"Behavior:")
     print(f"  Auto-open editor: {AUTO_OPEN_EDITOR}")
-    print(f"  Remember choices: {REMEMBER_CHOICES} (Phase 2.4 feature)")
+    print(f"  Remember choices: {REMEMBER_CHOICES}")
+    
+    # PHASE 2.4: History info
+    print()
+    print(f"Choice History (Phase 2.4):")
+    print(f"  History file: {HISTORY_FILE}")
+    if REMEMBER_CHOICES:
+        print(f"  ✓ Choice memory enabled")
+        if HISTORY_FILE.exists():
+            history = load_history()
+            print(f"  ✓ History file exists with {len(history)} project(s)")
+            if verbose and history:
+                print(f"\n  Recent projects:")
+                # Show up to 5 most recent
+                sorted_projects = sorted(
+                    history.items(),
+                    key=lambda x: x[1].get('last_used', ''),
+                    reverse=True
+                )[:5]
+                for path, choice in sorted_projects:
+                    project_name = Path(path).name
+                    terminal = choice.get('terminal', 'unknown')
+                    editor = choice.get('editor', 'none')
+                    last_used = choice.get('last_used', 'unknown')
+                    print(f"    {project_name}: {terminal} + {editor} (last: {last_used})")
+        else:
+            print(f"  ⚠ History file does not exist yet (will be created on first use)")
+    else:
+        print(f"  ✗ Choice memory disabled")
+        print(f"    Enable with: \"behavior.remember_choices\": true in config")
     
     # Test path sanitization
     if verbose:
@@ -726,6 +884,7 @@ if __name__ == "__main__":
         APP_ARGS = config.get("app_args", {})  # PHASE 2.3
         LOGGING_ENABLED = config["logging"]["enabled"]
         LOG_LEVEL = config["logging"]["level"]
+        REMEMBER_CHOICES = config["behavior"]["remember_choices"]
     
     # Setup logging with appropriate settings
     logger = setup_logging(
@@ -739,6 +898,7 @@ if __name__ == "__main__":
     logger.info(f"Arguments: {sys.argv[1:]}")
     logger.info(f"Verbose: {args.verbose}, Test mode: {args.test}, Logging: {not args.no_log}")
     logger.info(f"Config file: {args.config if args.config else 'default'}")
+    logger.info(f"Remember choices: {REMEMBER_CHOICES}")
     
     try:
         # Test mode
@@ -754,14 +914,14 @@ if __name__ == "__main__":
         else:
             # No arguments - show usage
             print("No paths provided.")
-            print("\\nUsage examples:")
+            print("\nUsage examples:")
             print("  python3 open_dev_env.py ~/projects/my-app")
             print("  python3 open_dev_env.py --test")
             print("  python3 open_dev_env.py --verbose ~/projects/my-app")
             print("  python3 open_dev_env.py --no-log ~/projects/my-app")
             print("  python3 open_dev_env.py --config ~/my-config.json ~/projects/my-app")
             print("  python3 open_dev_env.py --create-config")
-            print("\\nOr use via Automator Quick Action (right-click a folder in Finder)")
+            print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
             logger.info("No paths provided, showing usage")
             sys.exit(1)
     
