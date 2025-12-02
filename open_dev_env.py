@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sys
 import os
 import subprocess
@@ -15,6 +14,7 @@ from logging.handlers import RotatingFileHandler
 DEFAULT_CONFIG = {
     "terminals": ["Ghostty", "Kitty", "Warp", "Wave"],
     "editors": ["VSCodium"],  # Changed from single "editor" to list "editors"
+    "app_args": {},  # PHASE 2.3: Custom launch arguments
     "logging": {
         "enabled": True,
         "level": "INFO",
@@ -119,6 +119,7 @@ config = load_config()
 # Extract configuration values
 TERMINAL_APPS = config["terminals"]
 EDITOR_APPS = config["editors"]  # Now a list
+APP_ARGS = config.get("app_args", {})  # PHASE 2.3: Custom launch arguments
 LOGGING_ENABLED = config["logging"]["enabled"]
 LOG_LEVEL = config["logging"]["level"]
 LOG_FILE = Path(config["logging"]["file"]).expanduser()
@@ -316,8 +317,8 @@ def show_error_dialog(title, message):
     logger.error(f"Error dialog: {title} - {message}")
     
     # Escape quotes in message for AppleScript
-    safe_message = message.replace('"', '\\"')
-    safe_title = title.replace('"', '\\"')
+    safe_message = message.replace('"', '\\\\"')
+    safe_title = title.replace('"', '\\\\"')
     
     script = f"""
     display dialog "{safe_message}" buttons {{"OK"}} default button "OK" with title "{safe_title}" with icon stop
@@ -424,7 +425,7 @@ def ask_editor_choice(project_name, verbose=False):
     # If only one editor, ask yes/no instead of showing picker
     if len(available_editors) == 1:
         editor = available_editors[0]
-        safe_project_name = project_name.replace("'", "\\'").replace('"', '\\"')
+        safe_project_name = project_name.replace("'", "\\\\'").replace('"', '\\\\"')
         
         script = f"""
         display dialog "Open '{safe_project_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "Yes" with icon note
@@ -447,7 +448,7 @@ def ask_editor_choice(project_name, verbose=False):
             return None
     
     # Multiple editors: show picker with "None" option
-    safe_project_name = project_name.replace("'", "\\'").replace('"', '\\"')
+    safe_project_name = project_name.replace("'", "\\\\'").replace('"', '\\\\"')
     editor_list_with_none = ["None (Terminal Only)"] + available_editors
     options_str = "{" + ", ".join([f'"{app}"' for app in editor_list_with_none]) + "}"
     
@@ -505,7 +506,7 @@ def open_project(path, verbose=False):
     logger.info(f"Project name: {project_name}, Path: {path_str}")
     
     if verbose:
-        print(f"\nOpening project: {project_name}")
+        print(f"\\nOpening project: {project_name}")
         print(f"Path: {path_str}")
     
     # 1. Ask for Terminal (with validation)
@@ -521,7 +522,12 @@ def open_project(path, verbose=False):
         logger.info(f"Launching {terminal_app} for {project_name}")
         if verbose:
             print(f"Launching {terminal_app}...")
-        subprocess.run(["open", "-a", terminal_app, path_str], check=True)
+        # PHASE 2.3: Build command with optional custom arguments
+        cmd = ["open", "-a", terminal_app, path_str]
+        if terminal_app in APP_ARGS:
+            cmd.extend(["--args"] + APP_ARGS[terminal_app])
+            logger.debug(f"Added custom args for {terminal_app}: {APP_ARGS[terminal_app]}")
+        subprocess.run(cmd, check=True)
         logger.info(f"Successfully launched {terminal_app}")
         if verbose:
             print(f"✓ {terminal_app} launched successfully")
@@ -540,7 +546,12 @@ def open_project(path, verbose=False):
             logger.info(f"Launching {editor_app} for {project_name}")
             if verbose:
                 print(f"Launching {editor_app}...")
-            subprocess.run(["open", "-a", editor_app, path_str], check=True)
+            # PHASE 2.3: Build command with optional custom arguments
+            cmd = ["open", "-a", editor_app, path_str]
+            if editor_app in APP_ARGS:
+                cmd.extend(["--args"] + APP_ARGS[editor_app])
+                logger.debug(f"Added custom args for {editor_app}: {APP_ARGS[editor_app]}")
+            subprocess.run(cmd, check=True)
             logger.info(f"Successfully launched {editor_app}")
             if verbose:
                 print(f"✓ {editor_app} launched successfully")
@@ -567,7 +578,8 @@ def test_mode(verbose=False):
     print("=" * 60)
     
     # Configuration file info
-    print(f"\nConfiguration:")
+    print()
+    print("Configuration:")
     print(f"  Config file: {CONFIG_FILE}")
     if CONFIG_FILE.exists():
         print(f"  ✓ Config file exists")
@@ -575,7 +587,8 @@ def test_mode(verbose=False):
         print(f"  ✗ Config file not found (using defaults)")
         print(f"  Run with --create-config to create one")
     
-    print(f"\nConfigured Terminals: {', '.join(TERMINAL_APPS)}")
+    print()
+    print(f"Configured Terminals: {', '.join(TERMINAL_APPS)}")
     available = get_available_terminals()
     
     if available:
@@ -584,7 +597,8 @@ def test_mode(verbose=False):
         print("✗ No configured terminals found!")
         print(f"  Please install one of: {', '.join(TERMINAL_APPS)}")
     
-    print(f"\nConfigured Editors: {', '.join(EDITOR_APPS) if EDITOR_APPS else '(none)'}")
+    print()
+    print(f"Configured Editors: {', '.join(EDITOR_APPS) if EDITOR_APPS else '(none)'}")
     if EDITOR_APPS:
         available_editors = get_available_editors()
         if available_editors:
@@ -598,8 +612,19 @@ def test_mode(verbose=False):
     else:
         print(f"  Editor disabled (auto_open_editor: {AUTO_OPEN_EDITOR})")
     
+    # PHASE 2.3: Custom arguments info
+    print()
+    print(f"Custom Launch Arguments:")
+    if APP_ARGS:
+        for app, args in APP_ARGS.items():
+            args_str = " ".join(args)
+            print(f"  {app}: {args_str}")
+    else:
+        print(f"  None configured")
+    
     # Logging info
-    print(f"\nLogging Configuration:")
+    print()
+    print(f"Logging Configuration:")
     print(f"  Log file: {LOG_FILE}")
     print(f"  Logging enabled: {LOGGING_ENABLED}")
     print(f"  Log level: {LOG_LEVEL}")
@@ -612,13 +637,15 @@ def test_mode(verbose=False):
         print(f"  Log file does not exist yet")
     
     # Behavior settings
-    print(f"\nBehavior:")
+    print()
+    print(f"Behavior:")
     print(f"  Auto-open editor: {AUTO_OPEN_EDITOR}")
     print(f"  Remember choices: {REMEMBER_CHOICES} (Phase 2.4 feature)")
     
     # Test path sanitization
     if verbose:
-        print("\n" + "=" * 60)
+        print()
+        print("=" * 60)
         print("Path Sanitization Tests:")
         print("=" * 60)
         
@@ -631,12 +658,14 @@ def test_mode(verbose=False):
         ]
         
         for test_path in test_paths:
-            print(f"\nTesting: {test_path}")
+            print()
+            print(f"Testing: {test_path}")
             result = sanitize_path(test_path, verbose=True)
             if result:
                 print(f"  Result: {result}")
     
-    print("\n" + "=" * 60)
+    print()
+    print("=" * 60)
     if available:
         print("Configuration looks good! Ready to use.")
     else:
@@ -694,6 +723,7 @@ if __name__ == "__main__":
         # Re-extract configuration values
         TERMINAL_APPS = config["terminals"]
         EDITOR_APPS = config["editors"]
+        APP_ARGS = config.get("app_args", {})  # PHASE 2.3
         LOGGING_ENABLED = config["logging"]["enabled"]
         LOG_LEVEL = config["logging"]["level"]
     
@@ -724,14 +754,14 @@ if __name__ == "__main__":
         else:
             # No arguments - show usage
             print("No paths provided.")
-            print("\nUsage examples:")
+            print("\\nUsage examples:")
             print("  python3 open_dev_env.py ~/projects/my-app")
             print("  python3 open_dev_env.py --test")
             print("  python3 open_dev_env.py --verbose ~/projects/my-app")
             print("  python3 open_dev_env.py --no-log ~/projects/my-app")
             print("  python3 open_dev_env.py --config ~/my-config.json ~/projects/my-app")
             print("  python3 open_dev_env.py --create-config")
-            print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
+            print("\\nOr use via Automator Quick Action (right-click a folder in Finder)")
             logger.info("No paths provided, showing usage")
             sys.exit(1)
     

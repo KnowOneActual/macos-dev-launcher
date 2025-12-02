@@ -18,6 +18,11 @@
     "Cursor",
     "Zed"
   ],
+  "app_args": {
+    "Warp": ["--profile", "Work"],
+    "iTerm": ["--fullscreen"],
+    "VSCodium": ["--new-window"],
+    "Visual Studio Code": ["--new-window", "--disable-extensions"]
   
   "logging": {
     "enabled": true,
