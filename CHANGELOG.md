@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phase 3.3: Status notifications
 - Phase 3.4: Project type detection
 
+## [2.0.0] - 2025-12-02
+### Added
+- One-command installer script (curl | bash)
+- Manual Quick Action setup guide (reliable)
+- Uninstall support (--uninstall flag)
+- Memory system enabled by default
+### Changed
+- Installation: script+config only (no flaky Automator)
+- Version: v2.0.0 (major UX improvements)
+
+
 ## [1.5.0] - 2025-12-01
 
 ### Added
