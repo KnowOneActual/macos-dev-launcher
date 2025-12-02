@@ -8,9 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Phase 2.4: Memory/Favorites system (history.json implementation)
 - Phase 3.1: Combined launch options dialog
 - Phase 3.2: Installation script
+- Phase 3.3: Status notifications
+- Phase 3.4: Project type detection
+
+## [1.5.0] - 2025-12-01
+
+### Added
+- **Phase 2.4:** Memory/Favorites system - remembers terminal/editor choices per project
+- `history.json` storage at `~/.config/macos-dev-launcher/history.json`
+- `load_history()` function to retrieve saved choices
+- `save_choice()` function to persist user selections
+- `get_last_choice()` function to lookup previous project choices
+- Timestamp tracking (`last_used`) for each project
+- History integration in terminal picker (pre-selects last choice)
+- History integration in editor picker (pre-selects last choice)
+- Enhanced `--test` mode displays history status and recent projects
+
+### Changed
+- Terminal picker now defaults to last-used terminal for each project
+- Editor picker now defaults to last-used editor for each project
+- Single-editor Yes/No dialog defaults to "Yes" or "No" based on history
+- History automatically created on first project launch
+
+### Fixed
+- Improved AppleScript escaping for special characters in dialogs
+- Better handling of projects with no previous history
+
+### Documentation
+- Updated ROADMAP to mark Phase 2.4 as complete
+- Enhanced test mode with history file status
+
+**Phase 2 Complete! 🎉** The launcher now fully remembers your preferences.
+
+---
 
 ## [1.4.0] - 2025-11-30
 
@@ -110,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
-- **v1.4.0** - Phase 2 complete (External config + multi-editor + custom args)
+- **v1.5.0** - Phase 2 fully complete (Memory/Favorites system)
+- **v1.4.0** - Phase 2 mostly complete (External config + multi-editor + custom args)
 - **v1.3.0** - Phase 1.4 (Logging infrastructure)
 - **v1.2.0** - Phase 1.3 (Path sanitization)
 - **v1.1.0** - Phase 1.1 (App validation + CLI)
@@ -118,7 +151,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Migration Notes
 
-### Upgrading from v1.0.0 to v1.4.0
+### Upgrading from v1.4.0 to v1.5.0
+
+Memory system is opt-in. To enable:
+
+1. **Edit your config** at `~/.config/macos-dev-launcher/config.json`:
+   ```json
+   {
+     "behavior": {
+       "remember_choices": true
+     }
+   }
+   ```
+
+2. **Test it**:
+   ```bash
+   python3 ~/scripts/open_dev_env.py --test --verbose
+   ```
+
+History file will be created automatically at `~/.config/macos-dev-launcher/history.json`
+
+### Upgrading from v1.0.0 to v1.5.0
 
 Your script will continue to work with hardcoded values, but you can now:
 
