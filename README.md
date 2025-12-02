@@ -36,6 +36,13 @@ Instead of manually opening a terminal, navigating to a project, and then launch
 * **Lightweight & Fast:** Zero dependencies, launches in under 2 seconds
 * **Highly Customizable:** 13+ configuration options to match your workflow
 
+### Phase 3.1 - Combined Dialog (NEW!)
+- **Two-dialog workflow**: Pick terminal → pick editor → both launch
+- Optional combined mode via `combined_dialog: true` in config
+- Faster workflow when both apps needed
+- Maintains full backward compatibility
+
+
 ---
 
 ## Installation
