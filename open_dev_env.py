@@ -10,42 +10,33 @@ from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 
 # --- DEFAULT CONFIGURATION ---
-# These are used if no config file exists or values are missing
 DEFAULT_CONFIG = {
     "terminals": ["Ghostty", "Kitty", "Warp", "Wave"],
-    "editors": ["VSCodium"],  # Changed from single "editor" to list "editors"
-    "app_args": {},  # PHASE 2.3: Custom launch arguments
+    "editors": ["VSCodium"],
+    "app_args": {},
     "logging": {
         "enabled": True,
         "level": "INFO",
         "file": "~/Library/Logs/macos-dev-launcher.log",
-        "max_bytes": 1048576,  # 1 MB
+        "max_bytes": 1048576,
         "backup_count": 7
     },
     "behavior": {
         "auto_open_editor": True,
-        "remember_choices": False
+        "remember_choices": False,
+        "combined_dialog": False  # PHASE 3.1
     }
 }
 
 # Config file location
 CONFIG_DIR = Path.home() / ".config" / "macos-dev-launcher"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-HISTORY_FILE = CONFIG_DIR / "history.json"  # PHASE 2.4: History storage
+HISTORY_FILE = CONFIG_DIR / "history.json"
 
 # --- CONFIGURATION LOADING ---
 
 def load_config(config_path=None, verbose=False):
-    """
-    Load configuration from JSON file with fallback to defaults.
-    
-    Args:
-        config_path (Path): Optional path to config file. If None, uses default location.
-        verbose (bool): If True, print debug information
-    
-    Returns:
-        dict: Configuration dictionary with all values
-    """
+    """Load configuration from JSON file with fallback to defaults."""
     config = DEFAULT_CONFIG.copy()
     
     if config_path is None:
@@ -61,15 +52,14 @@ def load_config(config_path=None, verbose=False):
             with open(config_path, 'r') as f:
                 user_config = json.load(f)
             
-            # Merge user config with defaults (user config takes precedence)
-            # Deep merge for nested dicts
+            # Deep merge
             for key, value in user_config.items():
                 if key in config and isinstance(config[key], dict) and isinstance(value, dict):
                     config[key].update(value)
                 else:
                     config[key] = value
             
-            # Backward compatibility: convert old "editor" to "editors" list
+            # Backward compatibility
             if "editor" in user_config and "editors" not in user_config:
                 if user_config["editor"]:
                     config["editors"] = [user_config["editor"]]
@@ -87,18 +77,11 @@ def load_config(config_path=None, verbose=False):
     else:
         if verbose:
             print(f"Config file not found, using defaults")
-            print(f"You can create a config file at: {config_path}")
-            print(f"See config.example.json for reference")
     
     return config
 
 def create_example_config(verbose=False):
-    """
-    Create example configuration file at default location.
-    
-    Args:
-        verbose (bool): If True, print status information
-    """
+    """Create example configuration file at default location."""
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         
@@ -114,13 +97,13 @@ def create_example_config(verbose=False):
         print(f"Error: Could not create config file: {e}", file=sys.stderr)
         return False
 
-# Load configuration at module level
+# Load configuration
 config = load_config()
 
-# Extract configuration values
+# Extract values
 TERMINAL_APPS = config["terminals"]
-EDITOR_APPS = config["editors"]  # Now a list
-APP_ARGS = config.get("app_args", {})  # PHASE 2.3: Custom launch arguments
+EDITOR_APPS = config["editors"]
+APP_ARGS = config.get("app_args", {})
 LOGGING_ENABLED = config["logging"]["enabled"]
 LOG_LEVEL = config["logging"]["level"]
 LOG_FILE = Path(config["logging"]["file"]).expanduser()
@@ -129,24 +112,14 @@ LOG_MAX_BYTES = config["logging"]["max_bytes"]
 LOG_BACKUP_COUNT = config["logging"]["backup_count"]
 AUTO_OPEN_EDITOR = config["behavior"]["auto_open_editor"]
 REMEMBER_CHOICES = config["behavior"]["remember_choices"]
+COMBINED_DIALOG = config["behavior"].get("combined_dialog", False)  # PHASE 3.1
 
 # --- LOGGING SETUP ---
 
 def setup_logging(enabled=True, verbose=False, level=None):
-    """
-    Configure logging with rotation and appropriate level.
-    
-    Args:
-        enabled (bool): Whether to enable file logging
-        verbose (bool): If True, set to DEBUG level and also log to console
-        level (str): Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    
-    Returns:
-        logging.Logger: Configured logger instance
-    """
+    """Configure logging with rotation."""
     logger = logging.getLogger('macos-dev-launcher')
     
-    # Determine log level
     if verbose:
         log_level = logging.DEBUG
     elif level:
@@ -155,16 +128,12 @@ def setup_logging(enabled=True, verbose=False, level=None):
         log_level = logging.INFO
     
     logger.setLevel(log_level)
-    
-    # Clear any existing handlers
     logger.handlers.clear()
     
     if enabled:
         try:
-            # Ensure log directory exists
             LOG_DIR.mkdir(parents=True, exist_ok=True)
             
-            # Create rotating file handler
             file_handler = RotatingFileHandler(
                 LOG_FILE,
                 maxBytes=LOG_MAX_BYTES,
@@ -172,20 +141,16 @@ def setup_logging(enabled=True, verbose=False, level=None):
             )
             file_handler.setLevel(logging.DEBUG)
             
-            # Create formatter
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
             file_handler.setFormatter(formatter)
-            
             logger.addHandler(file_handler)
             
         except (OSError, PermissionError) as e:
-            # If logging setup fails, print warning but continue
             print(f"Warning: Could not set up logging: {e}", file=sys.stderr)
     
-    # Add console handler if verbose
     if verbose:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.DEBUG)
@@ -195,18 +160,12 @@ def setup_logging(enabled=True, verbose=False, level=None):
     
     return logger
 
-# Initialize logger (will be reconfigured in main)
 logger = logging.getLogger('macos-dev-launcher')
 
 # --- PHASE 2.4: HISTORY/MEMORY FUNCTIONS ---
 
 def load_history():
-    """
-    Load user's choice history from history.json.
-    
-    Returns:
-        dict: History dictionary mapping project paths to choices
-    """
+    """Load user's choice history."""
     if not HISTORY_FILE.exists():
         logger.debug(f"History file does not exist: {HISTORY_FILE}")
         return {}
@@ -217,27 +176,18 @@ def load_history():
         logger.debug(f"Loaded history with {len(history)} projects")
         return history
     except (json.JSONDecodeError, OSError) as e:
-        logger.warning(f"Could not load history from {HISTORY_FILE}: {e}")
+        logger.warning(f"Could not load history: {e}")
         return {}
 
 def save_choice(project_path, terminal, editor):
-    """
-    Save user's terminal/editor choice for this project.
-    
-    Args:
-        project_path (Path): Path to the project directory
-        terminal (str): Terminal app name that was used
-        editor (str or None): Editor app name that was used (None if skipped)
-    """
+    """Save user's choice for this project."""
     if not REMEMBER_CHOICES:
-        logger.debug("remember_choices is disabled, not saving choice")
+        logger.debug("remember_choices disabled, not saving")
         return
     
     try:
-        # Load existing history
         history = load_history()
         
-        # Update with new choice
         path_key = str(project_path)
         history[path_key] = {
             "terminal": terminal,
@@ -245,31 +195,19 @@ def save_choice(project_path, terminal, editor):
             "last_used": datetime.now().isoformat()
         }
         
-        # Ensure config directory exists
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Save updated history
         with open(HISTORY_FILE, 'w') as f:
             json.dump(history, f, indent=2)
         
-        logger.info(f"Saved choice for {project_path.name}: terminal={terminal}, editor={editor}")
+        logger.info(f"Saved choice: terminal={terminal}, editor={editor}")
         
     except (OSError, PermissionError, json.JSONDecodeError) as e:
-        logger.warning(f"Could not save choice history: {e}")
-        # Continue anyway - not critical
+        logger.warning(f"Could not save choice: {e}")
 
 def get_last_choice(project_path):
-    """
-    Get the last terminal/editor used for this project.
-    
-    Args:
-        project_path (Path): Path to the project directory
-    
-    Returns:
-        tuple: (terminal_name, editor_name) or (None, None) if no history
-    """
+    """Get last terminal/editor used for this project."""
     if not REMEMBER_CHOICES:
-        logger.debug("remember_choices is disabled, not loading choice")
         return None, None
     
     history = load_history()
@@ -279,134 +217,74 @@ def get_last_choice(project_path):
         choice = history[path_key]
         terminal = choice.get("terminal")
         editor = choice.get("editor")
-        last_used = choice.get("last_used")
-        
-        logger.debug(f"Found history for {project_path.name}: terminal={terminal}, editor={editor}, last_used={last_used}")
+        logger.debug(f"Found history: terminal={terminal}, editor={editor}")
         return terminal, editor
     else:
-        logger.debug(f"No history found for {project_path.name}")
+        logger.debug(f"No history found")
         return None, None
 
 # --- HELPER FUNCTIONS ---
 
 def app_exists(app_name):
-    """
-    Check if an application exists in /Applications.
-    
-    Args:
-        app_name (str): Name of the application (without .app extension)
-    
-    Returns:
-        bool: True if app exists, False otherwise
-    """
-    if not app_name:  # Handle empty string (e.g., disabled editor)
+    """Check if application exists in /Applications."""
+    if not app_name:
         return False
     app_path = Path(f"/Applications/{app_name}.app")
     exists = app_path.exists() and app_path.is_dir()
-    logger.debug(f"Checking if {app_name} exists: {exists}")
+    logger.debug(f"Checking {app_name}: {exists}")
     return exists
 
 def sanitize_path(path_str, verbose=False):
-    """
-    Sanitize and validate a path for safe usage.
-    
-    Args:
-        path_str (str): Path string to sanitize
-        verbose (bool): If True, print debug information
-    
-    Returns:
-        Path: Sanitized pathlib.Path object, or None if invalid
-    """
+    """Sanitize and validate a path."""
     logger.debug(f"Sanitizing path: {path_str}")
     
     try:
-        # Convert to Path object and resolve to absolute path
         path = Path(path_str).expanduser().resolve()
         
-        logger.debug(f"  Resolved to: {path}")
-        logger.debug(f"  Is symlink: {path.is_symlink() or Path(path_str).is_symlink()}")
-        
         if verbose:
-            print(f"Sanitizing path: {path_str}")
-            print(f"  Resolved to: {path}")
-            print(f"  Is symlink: {path.is_symlink() or Path(path_str).is_symlink()}")
+            print(f"Sanitizing: {path_str}")
+            print(f"  Resolved: {path}")
         
-        # Validate path exists
         if not path.exists():
             logger.warning(f"Path does not exist: {path}")
             if verbose:
-                print(f"  ✗ Path does not exist")
+                print(f"  ✗ Does not exist")
             return None
         
-        # Validate it's a directory
         if not path.is_dir():
-            logger.warning(f"Path is not a directory: {path}")
+            logger.warning(f"Not a directory: {path}")
             if verbose:
-                print(f"  ✗ Path is not a directory")
+                print(f"  ✗ Not a directory")
             return None
         
-        # Security check: ensure path is not trying to escape user directory
-        # This prevents malicious paths like "../../../etc"
-        try:
-            home = Path.home()
-            # Allow paths in user home or common dev locations
-            if not (str(path).startswith(str(home)) or 
-                    str(path).startswith('/tmp') or
-                    str(path).startswith('/var/folders')):
-                logger.warning(f"Path outside user directory: {path}")
-                if verbose:
-                    print(f"  ⚠ Warning: Path outside user directory")
-                # Don't block, but log warning
-        except (RuntimeError, OSError) as e:
-            logger.debug(f"Could not determine home directory: {e}")
-            # Can't determine home, skip security check
-            pass
-        
-        logger.info(f"Path validated successfully: {path}")
+        logger.info(f"Path validated: {path}")
         if verbose:
-            print(f"  ✓ Path is valid")
+            print(f"  ✓ Valid")
         
         return path
         
     except (OSError, RuntimeError, ValueError) as e:
-        logger.error(f"Path sanitization failed for '{path_str}': {e}")
+        logger.error(f"Path sanitization failed: {e}")
         if verbose:
-            print(f"  ✗ Path sanitization failed: {e}")
+            print(f"  ✗ Failed: {e}")
         return None
 
 def get_available_terminals():
-    """
-    Filter the configured terminal list to only include installed apps.
-    
-    Returns:
-        list: List of installed terminal app names
-    """
+    """Get list of installed terminals."""
     available = [app for app in TERMINAL_APPS if app_exists(app)]
-    logger.info(f"Available terminals: {available} (out of {TERMINAL_APPS})")
+    logger.info(f"Available terminals: {available}")
     return available
 
 def get_available_editors():
-    """
-    Filter the configured editor list to only include installed apps.
-    
-    Returns:
-        list: List of installed editor app names
-    """
+    """Get list of installed editors."""
     available = [app for app in EDITOR_APPS if app_exists(app)]
-    logger.info(f"Available editors: {available} (out of {EDITOR_APPS})")
+    logger.info(f"Available editors: {available}")
     return available
 
 def show_error_dialog(title, message):
-    """
-    Display an error dialog to the user.
+    """Display error dialog."""
+    logger.error(f"Error: {title} - {message}")
     
-    Args:
-        title (str): Dialog title
-        message (str): Error message to display
-    """
-    logger.error(f"Error dialog: {title} - {message}")
-    
-    # Escape quotes in message for AppleScript
     safe_message = message.replace('"', '\\\\"')
     safe_title = title.replace('"', '\\\\"')
     
@@ -415,56 +293,116 @@ def show_error_dialog(title, message):
     """
     try:
         subprocess.run(['osascript', '-e', script], check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to display error dialog: {e}")
-        # If dialog fails, at least print to stderr
+    except subprocess.CalledProcessError:
         print(f"ERROR: {title} - {message}", file=sys.stderr)
 
-def ask_terminal_choice(project_path, verbose=False):
+# --- PHASE 3.1: COMBINED DIALOG ---
+
+def ask_combined_choice(project_path, project_name, verbose=False):
     """
-    Pops up a list of available terminals to choose from.
-    Only shows terminals that are actually installed.
-    Uses history to pre-select last choice if available.
-    
-    Args:
-        project_path (Path): Path to project (for history lookup)
-        verbose (bool): If True, print debug information
+    PHASE 3.1: Single dialog for both terminal and editor.
     
     Returns:
-        str: Selected terminal name, or None if cancelled/no terminals available
+        tuple: (terminal_app, editor_app) or (None, None)
     """
-    logger.debug("Asking user to choose terminal")
+    logger.debug("Combined choice dialog")
     
-    # Get only installed terminals
-    available_terminals = get_available_terminals()
+    terminals = get_available_terminals()
+    editors = get_available_editors()
     
     if verbose:
-        print(f"Configured terminals: {TERMINAL_APPS}")
-        print(f"Available terminals: {available_terminals}")
+        print(f"Combined dialog mode")
+        print(f"  Terminals: {terminals}")
+        print(f"  Editors: {editors}")
     
-    # Handle case where no valid terminals are found
-    if not available_terminals:
-        logger.error("No configured terminals are installed")
+    if not terminals:
+        logger.error("No terminals installed")
         show_error_dialog(
-            "No Terminals Found",
-            "None of the configured terminal applications are installed. "
+            "No Terminals",
             f"Please install one of: {', '.join(TERMINAL_APPS)}"
+        )
+        return None, None
+    
+    # Get last choices
+    last_term, last_ed = get_last_choice(project_path)
+    
+    # Defaults
+    default_term = last_term if last_term in terminals else terminals[0]
+    
+    editor_opts = ["None"] + editors
+    if last_ed and last_ed in editors:
+        default_ed = last_ed
+    elif last_ed is None and REMEMBER_CHOICES:
+        default_ed = "None"
+    else:
+        default_ed = editors[0] if editors else "None"
+    
+    # Build AppleScript lists
+    term_list = "{" + ", ".join([f'"{t}"' for t in terminals]) + "}"
+    ed_list = "{" + ", ".join([f'"{e}"' for e in editor_opts]) + "}"
+    safe_name = project_name.replace('"', '\\\\"')
+    
+    script = f"""
+    set termChoice to choose from list {term_list} with prompt "🚀 Terminal for '{safe_name}':" default items {{"{default_term}"}}
+    if termChoice is false then return "CANCEL"
+    
+    set edChoice to choose from list {ed_list} with prompt "Terminal: " & (item 1 of termChoice) & return & return & "📝 Editor:" default items {{"{default_ed}"}}
+    if edChoice is false then return "CANCEL"
+    
+    return (item 1 of termChoice) & "|" & (item 1 of edChoice)
+    """
+    
+    try:
+        result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
+        
+        if result == "CANCEL":
+            logger.info("User cancelled")
+            if verbose:
+                print("User cancelled")
+            return None, None
+        
+        parts = result.split("|")
+        if len(parts) != 2:
+            logger.error(f"Unexpected result: {result}")
+            return None, None
+        
+        terminal = parts[0]
+        editor = None if parts[1] == "None" else parts[1]
+        
+        logger.info(f"Selected: terminal={terminal}, editor={editor}")
+        if verbose:
+            print(f"Selected: {terminal} + {editor or 'none'}")
+        
+        return terminal, editor
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Dialog failed: {e}")
+        show_error_dialog("Selection Failed", f"Could not display dialog: {e}")
+        return None, None
+
+# --- ORIGINAL DIALOG FUNCTIONS ---
+
+def ask_terminal_choice(project_path, verbose=False):
+    """Show terminal picker dialog."""
+    logger.debug("Terminal choice dialog")
+    
+    terminals = get_available_terminals()
+    
+    if verbose:
+        print(f"Available terminals: {terminals}")
+    
+    if not terminals:
+        logger.error("No terminals installed")
+        show_error_dialog(
+            "No Terminals",
+            f"Install one of: {', '.join(TERMINAL_APPS)}"
         )
         return None
     
-    # PHASE 2.4: Get last choice from history
-    last_terminal, _ = get_last_choice(project_path)
+    last_term, _ = get_last_choice(project_path)
+    default = last_term if last_term in terminals else terminals[0]
     
-    # Determine default selection
-    if last_terminal and last_terminal in available_terminals:
-        default = last_terminal
-        logger.debug(f"Using last terminal choice as default: {default}")
-    else:
-        default = available_terminals[0]
-        logger.debug(f"Using first available terminal as default: {default}")
-    
-    # AppleScript list format: {"Ghostty", "Kitty", "Warp", "Wave"}
-    options_str = "{" + ", ".join([f'"{app}"' for app in available_terminals]) + "}"
+    options_str = "{" + ", ".join([f'"{app}"' for app in terminals]) + "}"
     
     script = f"""
     set appList to {options_str}
@@ -478,109 +416,72 @@ def ask_terminal_choice(project_path, verbose=False):
     try:
         result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
         if result == "CANCEL":
-            logger.info("User cancelled terminal selection")
-            if verbose:
-                print(f"User selected: {result}")
+            logger.info("User cancelled")
             return None
-        else:
-            logger.info(f"User selected terminal: {result}")
-            if verbose:
-                print(f"User selected: {result}")
-            return result
+        logger.info(f"Selected: {result}")
+        if verbose:
+            print(f"Selected: {result}")
+        return result
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to display terminal picker: {e}")
-        show_error_dialog("Terminal Selection Failed", f"Could not display terminal picker: {e}")
+        logger.error(f"Dialog failed: {e}")
+        show_error_dialog("Failed", f"Could not display picker: {e}")
         return None
 
 def ask_editor_choice(project_name, project_path, verbose=False):
-    """
-    Ask user which editor to open, or if they want to open an editor at all.
-    Uses history to pre-select last choice if available.
+    """Ask which editor to open."""
+    logger.debug(f"Editor choice for: {project_name}")
     
-    Args:
-        project_name (str): Name of the project folder
-        project_path (Path): Path to project (for history lookup)
-        verbose (bool): If True, print debug information
-    
-    Returns:
-        str: Selected editor name, or None if user chose not to open editor
-    """
-    logger.debug(f"Asking user to choose editor for project: {project_name}")
-    
-    # Skip if auto_open_editor is disabled
     if not AUTO_OPEN_EDITOR:
-        logger.info("auto_open_editor is disabled, skipping editor prompt")
+        logger.info("auto_open_editor disabled")
         return None
     
-    # Get available editors
-    available_editors = get_available_editors()
+    editors = get_available_editors()
     
     if verbose:
-        print(f"Configured editors: {EDITOR_APPS}")
-        print(f"Available editors: {available_editors}")
+        print(f"Available editors: {editors}")
     
-    # If no editors available, skip silently
-    if not available_editors:
-        logger.info("No configured editors are installed, skipping editor prompt")
-        if verbose:
-            print(f"No editors installed, skipping...")
+    if not editors:
+        logger.info("No editors installed")
         return None
     
-    # PHASE 2.4: Get last choice from history
-    _, last_editor = get_last_choice(project_path)
+    _, last_ed = get_last_choice(project_path)
     
-    # If only one editor, ask yes/no instead of showing picker
-    if len(available_editors) == 1:
-        editor = available_editors[0]
-        safe_project_name = project_name.replace("'", "\\\\'").replace('"', '\\\\"')
+    # Single editor: Yes/No dialog
+    if len(editors) == 1:
+        editor = editors[0]
+        safe_name = project_name.replace('"', '\\\\"')
         
-        # Determine default button based on history
-        if last_editor == editor:
-            default_button = "Yes"
-        elif last_editor is None:  # User previously chose "No"
-            default_button = "No"
-        else:
-            default_button = "Yes"  # Fallback
+        default_btn = "Yes" if last_ed == editor else ("No" if last_ed is None else "Yes")
         
         script = f"""
-        display dialog "Open '{safe_project_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "{default_button}" with icon note
+        display dialog "Open '{safe_name}' in {editor} too?" buttons {{"No", "Yes"}} default button "{default_btn}" with icon note
         return button returned of result
         """
         try:
             result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
             if result == "Yes":
-                logger.info(f"User chose to open {editor}")
-                if verbose:
-                    print(f"User chose to open {editor}")
+                logger.info(f"Chose {editor}")
                 return editor
-            else:
-                logger.info("User chose not to open editor")
-                if verbose:
-                    print("User chose not to open editor")
-                return None
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to display editor prompt: {e}")
+            logger.info("Chose not to open editor")
+            return None
+        except subprocess.CalledProcessError:
             return None
     
-    # Multiple editors: show picker with "None" option
-    safe_project_name = project_name.replace("'", "\\\\'").replace('"', '\\\\"')
-    editor_list_with_none = ["None (Terminal Only)"] + available_editors
-    options_str = "{" + ", ".join([f'"{app}"' for app in editor_list_with_none]) + "}"
+    # Multiple editors: picker
+    safe_name = project_name.replace('"', '\\\\"')
+    editor_list = ["None"] + editors
+    options_str = "{" + ", ".join([f'"{e}"' for e in editor_list]) + "}"
     
-    # Determine default selection based on history
-    if last_editor and last_editor in available_editors:
-        default = last_editor
-        logger.debug(f"Using last editor choice as default: {default}")
-    elif last_editor is None and REMEMBER_CHOICES:  # User previously chose "None"
-        default = "None (Terminal Only)"
-        logger.debug("Using 'None' as default based on history")
+    if last_ed and last_ed in editors:
+        default = last_ed
+    elif last_ed is None and REMEMBER_CHOICES:
+        default = "None"
     else:
-        default = available_editors[0]
-        logger.debug(f"Using first available editor as default: {default}")
+        default = editors[0]
     
     script = f"""
     set appList to {options_str}
-    set choice to choose from list appList with prompt "📝 Open '{safe_project_name}' in which editor?" default items {{"{default}"}}
+    set choice to choose from list appList with prompt "📝 Open '{safe_name}' in which editor?" default items {{"{default}"}}
     if choice is false then
         return "CANCEL"
     else
@@ -589,304 +490,199 @@ def ask_editor_choice(project_name, project_path, verbose=False):
     """
     try:
         result = subprocess.check_output(['osascript', '-e', script], text=True).strip()
-        if result == "CANCEL" or result.startswith("None"):
-            logger.info("User chose not to open editor")
-            if verbose:
-                print("User chose not to open editor")
+        if result == "CANCEL" or result == "None":
+            logger.info("Chose not to open editor")
             return None
-        else:
-            logger.info(f"User selected editor: {result}")
-            if verbose:
-                print(f"User selected editor: {result}")
-            return result
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to display editor picker: {e}")
-        # Don't show error dialog - just skip editor
+        logger.info(f"Selected: {result}")
+        return result
+    except subprocess.CalledProcessError:
         return None
 
+# --- MAIN FUNCTION ---
+
 def open_project(path, verbose=False):
-    """
-    Main function to open a project in terminal and optionally editor.
+    """Open project in terminal and editor."""
+    logger.info(f"Opening: {path}")
     
-    Args:
-        path (str or Path): Path to the project directory
-        verbose (bool): If True, print debug information
-    """
-    logger.info(f"Opening project: {path}")
-    
-    # Sanitize the path first
     sanitized_path = sanitize_path(str(path), verbose)
     
     if not sanitized_path:
-        error_msg = f"Invalid or inaccessible path: {path}"
+        error_msg = f"Invalid path: {path}"
         logger.error(error_msg)
         show_error_dialog("Invalid Path", error_msg)
-        if verbose:
-            print(f"✗ {error_msg}")
         return
     
-    # Use sanitized path as string for subprocess
     path_str = str(sanitized_path)
     project_name = sanitized_path.name
     
-    logger.info(f"Project name: {project_name}, Path: {path_str}")
-    
     if verbose:
-        print(f"\nOpening project: {project_name}")
+        print(f"\nOpening: {project_name}")
         print(f"Path: {path_str}")
     
-    # 1. Ask for Terminal (with validation and history)
-    terminal_app = ask_terminal_choice(sanitized_path, verbose)
-    if not terminal_app:
-        logger.info("No terminal selected, aborting")
-        if verbose:
-            print("No terminal selected or available")
-        return  # User cancelled or no terminals available
-
-    # 2. Open Terminal
+    # PHASE 3.1: Combined or separate dialogs
+    if COMBINED_DIALOG:
+        terminal_app, editor_app = ask_combined_choice(sanitized_path, project_name, verbose)
+        if not terminal_app:
+            logger.info("No terminal selected")
+            return
+    else:
+        terminal_app = ask_terminal_choice(sanitized_path, verbose)
+        if not terminal_app:
+            logger.info("No terminal selected")
+            return
+        editor_app = None  # Will ask after terminal launches
+    
+    # Launch terminal
     try:
-        logger.info(f"Launching {terminal_app} for {project_name}")
+        logger.info(f"Launching {terminal_app}")
         if verbose:
             print(f"Launching {terminal_app}...")
-        # PHASE 2.3: Build command with optional custom arguments
+        
         cmd = ["open", "-a", terminal_app, path_str]
         if terminal_app in APP_ARGS:
             cmd.extend(["--args"] + APP_ARGS[terminal_app])
-            logger.debug(f"Added custom args for {terminal_app}: {APP_ARGS[terminal_app]}")
+            logger.debug(f"Custom args: {APP_ARGS[terminal_app]}")
+        
         subprocess.run(cmd, check=True)
-        logger.info(f"Successfully launched {terminal_app}")
+        logger.info(f"Launched {terminal_app}")
         if verbose:
-            print(f"✓ {terminal_app} launched successfully")
+            print(f"✓ {terminal_app} launched")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to launch {terminal_app}: {e}")
-        show_error_dialog(
-            "Failed to Open Terminal",
-            f"Could not launch {terminal_app}. Error: {e}"
-        )
+        logger.error(f"Failed to launch terminal: {e}")
+        show_error_dialog("Failed", f"Could not launch {terminal_app}: {e}")
         return
     
-    # 3. Ask for Editor (with multi-editor support and history)
-    editor_app = ask_editor_choice(project_name, sanitized_path, verbose)
+    # Ask for editor if not already chosen
+    if not COMBINED_DIALOG:
+        editor_app = ask_editor_choice(project_name, sanitized_path, verbose)
+    
+    # Launch editor
     if editor_app:
         try:
-            logger.info(f"Launching {editor_app} for {project_name}")
+            logger.info(f"Launching {editor_app}")
             if verbose:
                 print(f"Launching {editor_app}...")
-            # PHASE 2.3: Build command with optional custom arguments
+            
             cmd = ["open", "-a", editor_app, path_str]
             if editor_app in APP_ARGS:
                 cmd.extend(["--args"] + APP_ARGS[editor_app])
-                logger.debug(f"Added custom args for {editor_app}: {APP_ARGS[editor_app]}")
+                logger.debug(f"Custom args: {APP_ARGS[editor_app]}")
+            
             subprocess.run(cmd, check=True)
-            logger.info(f"Successfully launched {editor_app}")
+            logger.info(f"Launched {editor_app}")
             if verbose:
-                print(f"✓ {editor_app} launched successfully")
+                print(f"✓ {editor_app} launched")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to launch {editor_app}: {e}")
-            show_error_dialog(
-                "Failed to Open Editor",
-                f"Could not launch {editor_app}. Error: {e}"
-            )
-            # Continue anyway - terminal already opened successfully
+            logger.error(f"Failed to launch editor: {e}")
+            show_error_dialog("Failed", f"Could not launch {editor_app}: {e}")
     else:
-        logger.info("User chose not to open editor")
+        logger.info("No editor")
     
-    # PHASE 2.4: Save choices to history
+    # Save choices
     save_choice(sanitized_path, terminal_app, editor_app)
     
-    logger.info(f"Finished opening project: {project_name}")
+    logger.info(f"Finished: {project_name}")
+
+# --- TEST MODE ---
 
 def test_mode(verbose=False):
-    """
-    Test mode - validates configuration without launching anything.
-    """
-    logger.info("Running in test mode")
+    """Test configuration."""
+    logger.info("Test mode")
     
     print("=" * 60)
     print("macOS Dev Launcher - Configuration Test")
     print("=" * 60)
     
-    # Configuration file info
-    print()
-    print("Configuration:")
-    print(f"  Config file: {CONFIG_FILE}")
+    print("\nConfiguration:")
+    print(f"  File: {CONFIG_FILE}")
     if CONFIG_FILE.exists():
-        print(f"  ✓ Config file exists")
+        print(f"  ✓ Exists")
     else:
-        print(f"  ✗ Config file not found (using defaults)")
-        print(f"  Run with --create-config to create one")
+        print(f"  ✗ Not found (using defaults)")
     
-    print()
-    print(f"Configured Terminals: {', '.join(TERMINAL_APPS)}")
+    print(f"\nTerminals: {', '.join(TERMINAL_APPS)}")
     available = get_available_terminals()
-    
     if available:
-        print(f"✓ Available Terminals: {', '.join(available)}")
+        print(f"✓ Available: {', '.join(available)}")
     else:
-        print("✗ No configured terminals found!")
-        print(f"  Please install one of: {', '.join(TERMINAL_APPS)}")
+        print(f"✗ None installed")
     
-    print()
-    print(f"Configured Editors: {', '.join(EDITOR_APPS) if EDITOR_APPS else '(none)'}")
+    print(f"\nEditors: {', '.join(EDITOR_APPS) if EDITOR_APPS else '(none)'}")
     if EDITOR_APPS:
-        available_editors = get_available_editors()
-        if available_editors:
-            print(f"✓ Available Editors: {', '.join(available_editors)}")
-            if len(available_editors) > 1:
-                print(f"  (Multiple editors: picker dialog will be shown)")
+        available_eds = get_available_editors()
+        if available_eds:
+            print(f"✓ Available: {', '.join(available_eds)}")
         else:
-            print(f"✗ No configured editors found")
-            print(f"  Please install one of: {', '.join(EDITOR_APPS)}")
-            print(f"  (Editor is optional - will be skipped)")
-    else:
-        print(f"  Editor disabled (auto_open_editor: {AUTO_OPEN_EDITOR})")
+            print(f"✗ None installed")
     
-    # PHASE 2.3: Custom arguments info
-    print()
-    print(f"Custom Launch Arguments:")
+    print(f"\nCustom Args:")
     if APP_ARGS:
         for app, args in APP_ARGS.items():
-            args_str = " ".join(args)
-            print(f"  {app}: {args_str}")
+            print(f"  {app}: {' '.join(args)}")
     else:
-        print(f"  None configured")
+        print(f"  None")
     
-    # Logging info
-    print()
-    print(f"Logging Configuration:")
-    print(f"  Log file: {LOG_FILE}")
-    print(f"  Logging enabled: {LOGGING_ENABLED}")
-    print(f"  Log level: {LOG_LEVEL}")
-    print(f"  Max log size: {LOG_MAX_BYTES / 1024:.0f} KB")
-    print(f"  Backup count: {LOG_BACKUP_COUNT}")
+    print(f"\nLogging:")
+    print(f"  File: {LOG_FILE}")
+    print(f"  Enabled: {LOGGING_ENABLED}")
+    print(f"  Level: {LOG_LEVEL}")
     if LOG_FILE.exists():
         size = LOG_FILE.stat().st_size
-        print(f"  Current log size: {size / 1024:.2f} KB")
-    else:
-        print(f"  Log file does not exist yet")
+        print(f"  Size: {size / 1024:.2f} KB")
     
-    # Behavior settings
-    print()
-    print(f"Behavior:")
+    print(f"\nBehavior:")
     print(f"  Auto-open editor: {AUTO_OPEN_EDITOR}")
     print(f"  Remember choices: {REMEMBER_CHOICES}")
+    print(f"  Combined dialog: {COMBINED_DIALOG}")  # PHASE 3.1
     
-    # PHASE 2.4: History info
-    print()
-    print(f"Choice History (Phase 2.4):")
-    print(f"  History file: {HISTORY_FILE}")
+    print(f"\nHistory:")
+    print(f"  File: {HISTORY_FILE}")
     if REMEMBER_CHOICES:
-        print(f"  ✓ Choice memory enabled")
+        print(f"  ✓ Enabled")
         if HISTORY_FILE.exists():
             history = load_history()
-            print(f"  ✓ History file exists with {len(history)} project(s)")
-            if verbose and history:
-                print(f"\n  Recent projects:")
-                # Show up to 5 most recent
-                sorted_projects = sorted(
-                    history.items(),
-                    key=lambda x: x[1].get('last_used', ''),
-                    reverse=True
-                )[:5]
-                for path, choice in sorted_projects:
-                    project_name = Path(path).name
-                    terminal = choice.get('terminal', 'unknown')
-                    editor = choice.get('editor', 'none')
-                    last_used = choice.get('last_used', 'unknown')
-                    print(f"    {project_name}: {terminal} + {editor} (last: {last_used})")
+            print(f"  ✓ {len(history)} project(s)")
         else:
-            print(f"  ⚠ History file does not exist yet (will be created on first use)")
+            print(f"  ⚠ Will be created on first use")
     else:
-        print(f"  ✗ Choice memory disabled")
-        print(f"    Enable with: \"behavior.remember_choices\": true in config")
+        print(f"  ✗ Disabled")
     
-    # Test path sanitization
-    if verbose:
-        print()
-        print("=" * 60)
-        print("Path Sanitization Tests:")
-        print("=" * 60)
-        
-        test_paths = [
-            ".",
-            "~",
-            "/tmp",
-            "../../../etc",  # Potentially malicious
-            "test dir with spaces",
-        ]
-        
-        for test_path in test_paths:
-            print()
-            print(f"Testing: {test_path}")
-            result = sanitize_path(test_path, verbose=True)
-            if result:
-                print(f"  Result: {result}")
-    
-    print()
-    print("=" * 60)
+    print("\n" + "=" * 60)
     if available:
-        print("Configuration looks good! Ready to use.")
+        print("✓ Ready to use")
     else:
-        print("Please install at least one terminal to continue.")
+        print("✗ Install at least one terminal")
     print("=" * 60)
 
+# --- MAIN ---
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description='Launch terminal and editor for a project directory',
-        epilog='Note: When called without arguments, uses paths from Automator'
-    )
-    parser.add_argument(
-        'paths',
-        nargs='*',
-        help='Project directory paths to open'
-    )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Enable verbose output for debugging'
-    )
-    parser.add_argument(
-        '-t', '--test',
-        action='store_true',
-        help='Test mode - validate configuration without opening anything'
-    )
-    parser.add_argument(
-        '--no-log',
-        action='store_true',
-        help='Disable file logging'
-    )
-    parser.add_argument(
-        '--config',
-        type=str,
-        help='Path to custom config file'
-    )
-    parser.add_argument(
-        '--create-config',
-        action='store_true',
-        help='Create example config file at default location'
-    )
+    parser = argparse.ArgumentParser(description='Launch terminal and editor')
+    parser.add_argument('paths', nargs='*', help='Project paths')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('-t', '--test', action='store_true', help='Test configuration')
+    parser.add_argument('--no-log', action='store_true', help='Disable logging')
+    parser.add_argument('--config', type=str, help='Custom config file')
+    parser.add_argument('--create-config', action='store_true', help='Create config file')
     
     args = parser.parse_args()
     
-    # Handle config creation
     if args.create_config:
         if create_example_config(verbose=True):
             sys.exit(0)
         else:
             sys.exit(1)
     
-    # Load custom config if specified
     if args.config:
         config = load_config(args.config, args.verbose)
-        # Re-extract configuration values
         TERMINAL_APPS = config["terminals"]
         EDITOR_APPS = config["editors"]
-        APP_ARGS = config.get("app_args", {})  # PHASE 2.3
+        APP_ARGS = config.get("app_args", {})
         LOGGING_ENABLED = config["logging"]["enabled"]
         LOG_LEVEL = config["logging"]["level"]
         REMEMBER_CHOICES = config["behavior"]["remember_choices"]
+        COMBINED_DIALOG = config["behavior"].get("combined_dialog", False)
     
-    # Setup logging with appropriate settings
     logger = setup_logging(
         enabled=LOGGING_ENABLED and not args.no_log,
         verbose=args.verbose,
@@ -894,41 +690,31 @@ if __name__ == "__main__":
     )
     
     logger.info("=" * 50)
-    logger.info("macOS Dev Launcher started")
-    logger.info(f"Arguments: {sys.argv[1:]}")
-    logger.info(f"Verbose: {args.verbose}, Test mode: {args.test}, Logging: {not args.no_log}")
-    logger.info(f"Config file: {args.config if args.config else 'default'}")
-    logger.info(f"Remember choices: {REMEMBER_CHOICES}")
+    logger.info("Started")
+    logger.info(f"Args: {sys.argv[1:]}")
+    logger.info(f"Combined dialog: {COMBINED_DIALOG}")
     
     try:
-        # Test mode
         if args.test:
             test_mode(args.verbose)
             sys.exit(0)
         
-        # Handle paths
         if args.paths:
-            # Paths provided as arguments
             for path in args.paths:
                 open_project(path, args.verbose)
         else:
-            # No arguments - show usage
             print("No paths provided.")
-            print("\nUsage examples:")
+            print("\nUsage:")
             print("  python3 open_dev_env.py ~/projects/my-app")
             print("  python3 open_dev_env.py --test")
-            print("  python3 open_dev_env.py --verbose ~/projects/my-app")
-            print("  python3 open_dev_env.py --no-log ~/projects/my-app")
-            print("  python3 open_dev_env.py --config ~/my-config.json ~/projects/my-app")
             print("  python3 open_dev_env.py --create-config")
-            print("\nOr use via Automator Quick Action (right-click a folder in Finder)")
-            logger.info("No paths provided, showing usage")
+            logger.info("No paths")
             sys.exit(1)
     
     except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
+        logger.exception(f"Error: {e}")
         raise
     
     finally:
-        logger.info("macOS Dev Launcher finished")
+        logger.info("Finished")
         logger.info("=" * 50)
